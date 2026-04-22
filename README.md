@@ -1,6 +1,10 @@
-# Skills & Agents
+# Devflow
 
-A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) custom skills and agent definitions that enforce disciplined, worker-routed AI-assisted development workflows.
+A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) custom skills and worker agent definitions that enforce disciplined, pipeline-routed AI-assisted development workflows.
+
+The framework routes every task through a named pipeline of specialized workers — planner, implementer, tester, reviewer, checker — before any code, test, or documentation is written. Workers self-identify, stay in role, and produce structured output. No silent fallback to generic behavior.
+
+For full usage guidance, pipeline descriptions, and examples see [USER-MANUAL.md](USER-MANUAL.md).
 
 ## What's Inside
 
@@ -10,19 +14,19 @@ Reusable process guides that Claude Code invokes via slash commands. Each skill 
 
 | Skill | Purpose |
 |---|---|
-| `using-devflow` | Router/gatekeeper — routes every task through the correct worker agent pipeline before any work begins |
+| `using-devflow` | Router/gatekeeper — selects the correct named pipeline and routes every task through it before any work begins |
 | `writing-plans` | Structured implementation planning before coding |
 | `test-driven-development` | RED-GREEN-REFACTOR cycle enforcement |
 | `systematic-debugging` | Root-cause analysis before proposing fixes |
 | `brainstorming` | Explores intent, requirements, and design before implementation |
-| `interview` | In-depth user interviewing to create detailed specs |
+| `interview` | Structured requirements extraction through one-at-a-time questioning |
 | `writing-skills` | TDD-based approach to creating and testing new skills |
-| `find-bugs` | Security and code quality review of local branch changes |
-| `code-simplifier` | Refines code for clarity and consistency while preserving behavior |
-| `requesting-code-review` | Verify work meets requirements before merging |
-| `receiving-code-review` | Technical rigor when processing review feedback |
+| `find-bugs` | Security and code quality audit of local branch changes |
+| `code-simplifier` | Orchestrates code cleanup for clarity and consistency while preserving behavior |
+| `requesting-code-review` | Verifies work meets requirements before merging |
+| `receiving-code-review` | Enforces technical rigor when processing review feedback |
 | `verification-before-completion` | Evidence-based verification before claiming work is done |
-| `dispatching-parallel-agents` | Parallelizes independent tasks across subagents |
+| `dispatching-parallel-agents` | Parallelizes independent tasks across subagents for concurrent execution |
 | `subagent-driven-development` | Executes plans with independent implementation agents |
 | `executing-plans` | Runs implementation plans with review checkpoints |
 | `finishing-a-development-branch` | Guides branch completion — merge, PR, or cleanup |
@@ -30,27 +34,48 @@ Reusable process guides that Claude Code invokes via slash commands. Each skill 
 | `spike-executor` | Orchestrates the full spike/POC lifecycle — hypothesis → experiment → decision |
 | `poc-retrospective` | Captures spike decision, learnings, carry-forwards, and cleanup after an investigation |
 | `hypothesis-validator` | Designs and runs a minimal experiment to test one specific technical assumption |
-| `session-continuity` | Writes/reads structured investigation state snapshots for multi-session work |
+| `session-continuity` | Writes/reads structured state snapshots for multi-session work |
 
 ### Agents (`agents/`)
 
-Worker agent definitions that skills route tasks to. Each agent has a focused role and strict boundaries.
+Worker agent definitions that pipelines route tasks to. Each agent has a focused role, strict boundaries, and a model chosen for its cognitive tier.
 
-| Agent | Role |
-|---|---|
-| `task-planner` | Translates tasks into minimal, executable implementation plans |
-| `feature-implementer` | Implements one scoped plan step with minimal diff |
-| `test-engineer` | Writes/updates tests, regression coverage, edge cases |
-| `code-reviewer` | Reviews correctness, regressions, standards, test adequacy |
-| `acceptance-checker` | Maps implementation to acceptance criteria with evidence |
-| `docs-updater` | Keeps documentation aligned with recent code changes |
-| `api-researcher` | Researches external APIs/libraries and produces guidance |
-| `bug-repro-triager` | Produces repro steps, hypotheses, and investigation plans |
-| `code-simplification` | Simplifies recently modified code while preserving behavior |
-| `research` | General-purpose technical research for any domain, library, or concept |
-| `spike-investigator` | Hands-on experimentation agent that validates a hypothesis in throwaway mode |
-| `technology-selector` | Evaluates technology/library options and produces a single recommendation with trade-offs |
-| `scope-estimator` | Rough effort/complexity sizing per work area before writing a full implementation plan |
+| Agent | Role | Model |
+|---|---|---|
+| `task-planner` | Translates tasks into minimal, executable implementation plans | Opus |
+| `context-mapper` | Traces dependency blast area and writes a context map for downstream workers | Haiku |
+| `feature-implementer` | Implements one scoped plan step with minimal diff | Sonnet |
+| `test-engineer` | Writes/updates tests, regression coverage, and edge cases | Sonnet |
+| `code-reviewer` | Reviews correctness, regressions, standards, and test adequacy | Sonnet |
+| `acceptance-checker` | Maps implementation to acceptance criteria with evidence | Sonnet |
+| `docs-updater` | Keeps documentation aligned with recent code changes | Haiku |
+| `api-researcher` | Researches external APIs/libraries and produces implementation guidance | Sonnet |
+| `bug-repro-triager` | Produces repro steps, hypotheses, and investigation plans | Sonnet |
+| `code-simplification` | Simplifies recently modified code while preserving exact behavior | Sonnet |
+| `research` | General-purpose technical research for any domain, library, or concept | Sonnet |
+| `spike-investigator` | Hands-on experimentation agent that validates a hypothesis in throwaway mode | Sonnet |
+| `technology-selector` | Evaluates technology/library options and produces a single recommendation with trade-offs | Opus |
+| `scope-estimator` | Rough effort/complexity sizing per work area before writing a full implementation plan | Sonnet |
+
+**Model tiers:** Opus for high-stakes reasoning (planning, architecture decisions); Haiku for mechanical tasks (dependency mapping, doc sync); Sonnet for everything in between.
+
+## Pipelines
+
+`using-devflow` maps every task to one of nine named pipelines:
+
+| # | Name | Default worker sequence |
+|---|------|------------------------|
+| 0 | Requirements gathering | `interview → brainstorming → scope-estimator → writing-plans` |
+| 1 | Spike / POC investigation | `research → spike-investigator → poc-retrospective` |
+| 2 | Unfamiliar API / library | `api-researcher` → transition to Pipeline 3 |
+| 3 | New feature / behavior change | `task-planner → feature-implementer → test-engineer → code-reviewer → acceptance-checker` |
+| 4 | Bug fix / runtime failure | `bug-repro-triager → test-engineer → feature-implementer → code-reviewer → acceptance-checker` |
+| 5 | Refactor / simplification | `task-planner → code-simplifier → code-reviewer → acceptance-checker` |
+| 6 | Test-only | `test-engineer → code-reviewer` |
+| 7 | Review-only | `code-reviewer` |
+| 8 | Docs-only | `docs-updater` |
+
+Each pipeline defines Variants (optional additions), Notes (discipline rules), and a Transition (what happens when the pipeline completes or loops back).
 
 ## Installation
 
@@ -60,7 +85,7 @@ Copy skills and agents into your Claude Code configuration directory:
 # Skills
 cp -r skills/* ~/.claude/skills/
 
-# Agents (if supported by your setup)
+# Agents
 cp -r agents/* ~/.claude/agents/
 ```
 
@@ -73,9 +98,10 @@ For EVERY task — no exceptions — invoke the `using-devflow` skill before doi
 ## How It Works
 
 1. Every task triggers `using-devflow` first
-2. The skill selects an ordered pipeline of worker agents (e.g. `task-planner -> feature-implementer -> test-engineer -> code-reviewer`)
+2. The skill selects a named pipeline and announces the ordered worker sequence
 3. Each worker self-identifies, stays in role, and produces structured output
-4. No silent fallback to generic behavior — routing is always visible
+4. Workers transition to the next worker in the pipeline — or loop back if review feedback or acceptance gaps require it
+5. No silent fallback to generic behavior — routing is always visible and auditable
 
 ## License
 
