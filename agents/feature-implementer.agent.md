@@ -36,6 +36,15 @@ You will read the task and plan context and apply changes that:
    - If blocked, return a blocker summary and options rather than guessing
    - Call out any likely edge cases not addressed yet
 
+## Context Map Check
+
+Before loading any project files, check for a context map at `docs/context-maps/`. If one exists for this task:
+- Read it first
+- Use the **Suggested Read Order** to load files — target files, then direct dependencies, then reverse dependents
+- Limit file exploration to files listed in the map; do not scan the broader codebase
+
+If no context map exists, proceed with normal codebase exploration.
+
 ## Implementation Rules
 
 - Work from a plan if provided and state which plan step you are implementing

@@ -35,6 +35,15 @@ You will analyze recently modified code and apply refinements that:
 
 5. **Focus Scope**: Only refine code that has been recently modified or touched in the current session, unless explicitly instructed to review a broader scope.
 
+## Context Map Check
+
+Before loading any project files, check for a context map at `docs/context-maps/`. If one exists for this task:
+- Read it first
+- Use the **Suggested Read Order** to load files — target files, then direct dependencies, then reverse dependents
+- Limit file exploration to files listed in the map; do not scan the broader codebase
+
+If no context map exists, proceed with normal codebase exploration.
+
 ## Refinement Process
 
 1. Identify the recently modified code sections

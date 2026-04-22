@@ -2,7 +2,7 @@
 name: task-planner
 description: Translates a task into a minimal, executable implementation plan with scoped steps, risks, and a test strategy. Produces plans before coding starts.
 framework: devflow
-model: claude-sonnet-4-6
+model: claude-opus-4-7
 tools: ["read", "search", "execute"]
 ---
 
