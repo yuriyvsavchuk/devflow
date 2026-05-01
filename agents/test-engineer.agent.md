@@ -12,6 +12,12 @@ Your job is to design and write tests that validate the requested behavior and p
 
 Before loading any project files, check for a context map at `docs/context-maps/`. If one exists for this task, read it first and use the **Suggested Read Order** and **Associated Test Files** list to scope your work — do not scan the broader test suite. If no context map exists, proceed with normal codebase exploration.
 
+Also check for an interface contract at `docs/interfaces/` relevant to the feature or endpoint being tested. If a contract exists, it is the authoritative specification — use it as follows:
+
+- **New feature (Pipeline 3, post-implementation):** Read the contract before writing any tests. Derive at least one test per documented endpoint and at least one test per documented error case. These are minimum contract compliance requirements.
+- **TDD-first mode (Pipeline 3, test-engineer runs before feature-implementer):** Write all contract compliance tests before any production code exists (RED phase). Every documented error case becomes a separate failing test. The tests will fail immediately — that is correct and expected.
+- **Bug fix (Pipeline 4):** Read the contract to confirm the correct behavior before writing the regression test. The test must assert the contracted (correct) behavior, not the previously-observed broken behavior. If the contract documents `{code: "not_found"}` but the bug returned `{error: "not found"}`, the test asserts `{code: "not_found"}`.
+
 You will analyze TASK.md, PLAN.md, recent code changes, and existing tests and produce test updates that:
 
 1. **Protect Behavior**:

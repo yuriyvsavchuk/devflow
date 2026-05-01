@@ -289,6 +289,7 @@ These techniques are part of systematic debugging and available in this director
 - **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
 - **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
 - **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
+- **`find-polluter.sh`** - Bisection script to identify which test in a suite creates unwanted files or global state; run as `./find-polluter.sh <path_to_check> <test_glob>` — exits with the offending test file and pollution details
 
 **Related skills:**
 - **devflow:test-driven-development** — For creating the failing test case (Phase 4, Step 1)

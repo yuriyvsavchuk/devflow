@@ -106,7 +106,7 @@ Do not silently skip routing.
 
 ## Worker Selection Heuristics (Default Pipelines)
 
-Use these default pipelines unless there is a strong reason to change them. Pipelines follow the natural lifecycle of a task: specify → validate → learn → build → fix → clean → cover → gate → document.
+Use these default pipelines unless there is a strong reason to change them. Pipelines follow the natural lifecycle of a task: specify → validate → learn → build → fix → clean → cover → gate → document → optimize → audit.
 
 ---
 
@@ -126,6 +126,8 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - Skip devflow:brainstorming if the design approach is already agreed — go straight to devflow:scope-estimator or devflow:writing-plans
 - Skip devflow:scope-estimator if the scope is small and well-understood
 - Insert devflow:spike-executor between devflow:brainstorming and devflow:scope-estimator when the feasibility of the proposed design is unknown
+- Insert devflow:adr-writer after devflow:brainstorming when the design session produces a significant architectural decision — a choice affecting multiple components, hard to reverse, or made between named alternatives; the ADR is written before devflow:scope-estimator or devflow:writing-plans begins
+- Insert devflow:adr-writer after devflow:technology-selector (when used as a Variant) — the technology-selector recommendation is the decision that the ADR records
 
 **Notes:**
 - devflow:interview produces a written spec; devflow:brainstorming turns the spec into a concrete design
@@ -157,6 +159,7 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - Insert devflow:scope-estimator before devflow:poc-retrospective when a Proceed decision needs a sizing estimate before opening a plan
 - Skip devflow:research if the domain is already well-understood
 - Prepend devflow:using-git-worktrees before devflow:spike-investigator when the spike will produce code artifacts — keeps throwaway code on an isolated branch that can be cleanly archived or deleted after the retrospective
+- Append devflow:adr-writer after devflow:poc-retrospective when the Proceed decision constitutes an architectural commitment — the retrospective records what the experiment revealed; the ADR records the architectural decision that follows from it
 
 **Notes:**
 - devflow:spike-investigator works in throwaway mode: no TDD, no production standards apply
@@ -166,7 +169,7 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - When the spike produces a **Proceed** decision, start the production implementation in a **new session** — read the retrospective document to orient, do not carry spike-mode context forward
 
 **Transition:**
-- **Proceed** → devflow:writing-plans for the production implementation (new session, starting from the retrospective)
+- **Proceed** → devflow:writing-plans for the production implementation (new session, starting from the retrospective and any ADR written in this session)
 - **Pivot** → open a new spike with the refined hypothesis
 - **Abandon** → devflow:poc-retrospective closes the record; no further work
 
@@ -183,6 +186,7 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 
 **Variants:**
 - Prepend devflow:technology-selector when the library or framework has not yet been chosen and two or more options are under consideration
+- Append devflow:adr-writer after devflow:api-researcher when adopting this library or API is a significant architectural commitment — documents the adoption decision before Pipeline 3 begins
 - Skip this pipeline entirely and go straight to Pipeline 3 if the API is already well-understood and documented internally
 
 **Notes:**
@@ -209,7 +213,10 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 **Variants:**
 - Prepend devflow:scope-estimator when scope is unclear or the feature touches many areas of the codebase
 - Prepend devflow:using-git-worktrees before devflow:feature-implementer when the project uses git — creates an isolated worktree and feature branch before any code changes begin
-- Insert devflow:context-mapper after devflow:task-planner when the codebase is large or the change touches a shared module — traces reverse dependencies and test coverage from the plan's target files; downstream workers read the context map instead of scanning the codebase themselves
+- Insert devflow:interface-designer after devflow:task-planner when the change introduces or modifies a public API endpoint, shared module exports, or service boundary — produces a binding interface contract (OpenAPI 3.x spec, TypeScript interfaces, or AsyncAPI schema) before devflow:feature-implementer begins; any deviation from the contract during implementation requires updating the contract first
+- Move devflow:test-engineer before devflow:feature-implementer when devflow:interface-designer has run and the project follows TDD — the contract provides complete behavioral specifications (all endpoints, parameters, and error cases) enabling test-first; test-engineer writes contract compliance tests (RED phase) before any production code is written; feature-implementer then implements to GREEN; this repositions the standard post-implementation devflow:test-engineer step — no separate post-implementation pass is needed when the contract tests are comprehensive
+- Insert devflow:context-mapper after devflow:task-planner (or after devflow:interface-designer when both are active) when the codebase is large or the change touches a shared module — traces reverse dependencies and test coverage from the plan's target files; downstream workers read the context map instead of scanning the codebase themselves
+- Append devflow:dependency-auditor after devflow:test-engineer when the implementation adds or modifies package manifests (package.json, requirements.txt, Cargo.toml, go.mod, Gemfile, etc.) — run before devflow:code-reviewer so audit findings are available as review context; if dependency-auditor reports Critical or High findings, escalate to Pipeline 10 before merging
 - Append devflow:docs-updater when public behavior, API, configuration, or migration notes change
 
 **Notes:**
@@ -219,10 +226,14 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - Use devflow:session-continuity at session boundaries to preserve implementation state across sessions
 - When devflow:context-mapper has run, all downstream workers must read the context map from `docs/context-maps/` before loading any project files — the map is the scoping contract for the pipeline
 - If arriving from Pipeline 2 and devflow:task-planner finds the api-researcher findings incomplete for a critical edge case, pause and return to Pipeline 2 for a second research pass before continuing the plan
+- If an ADR exists in `docs/decisions/` for this feature or component, devflow:task-planner must read it before producing the plan — the ADR constrains the plan and may have already rejected alternatives the planner might otherwise propose
+- When devflow:interface-designer has run, devflow:test-engineer must read the contract from `docs/interfaces/` and derive contract compliance tests — one test per documented error case at minimum; devflow:code-reviewer must verify the implementation matches the contract exactly, treating any undisclosed deviation as a defect; devflow:acceptance-checker must also read the contract and verify the shipped behavior matches it — a gap between contract and implementation is an unmet acceptance criterion even if all unit tests pass
+- When devflow:code-reviewer or devflow:acceptance-checker determines the contract in `docs/interfaces/` is itself incorrect or insufficient (not just the implementation), route back to devflow:interface-designer for a revision before continuing — the contract is the source of truth but can be corrected when implementation reveals a design error; after the revision, re-run devflow:feature-implementer (changed sections only), devflow:test-engineer (if the revision affects test expectations), and devflow:code-reviewer
 - **Maintenance note:** Pipeline 3 and Pipeline 4 share identical completion rules — when updating Transition or completion Notes in one, apply the same change to the other
 
 **Transition:**
 - devflow:receiving-code-review if devflow:code-reviewer returns feedback that requires fixes — after fixes are applied, re-run devflow:code-reviewer then proceed to devflow:acceptance-checker
+- devflow:code-reviewer or devflow:acceptance-checker determines the contract in `docs/interfaces/` is incorrect or insufficient → route back to devflow:interface-designer for a revision, then re-run devflow:feature-implementer (changed sections only) and devflow:test-engineer if the revision affects test expectations, then re-run devflow:code-reviewer — do not implement against a known-wrong contract
 - devflow:acceptance-checker finds unmet criteria due to missing implementation → return to devflow:feature-implementer, then re-run devflow:test-engineer and devflow:code-reviewer before re-checking
 - devflow:acceptance-checker finds unmet criteria due to missing test coverage → return to devflow:test-engineer, then re-run devflow:code-reviewer before re-checking
 - devflow:finishing-a-development-branch when all acceptance criteria are met
@@ -243,17 +254,21 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - Prepend devflow:using-git-worktrees before devflow:feature-implementer when the project uses git — creates an isolated worktree and feature branch before any code changes begin
 - Use devflow:dispatching-parallel-agents when 3 or more independent failures exist across different subsystems — dispatch one agent per failure domain instead of investigating sequentially
 - Insert devflow:context-mapper after devflow:bug-repro-triager when the codebase is large or the failure implicates a shared module — traces reverse dependencies and test coverage from the triage's affected code paths; downstream workers read the context map instead of scanning the codebase themselves
+- Insert devflow:interface-designer after devflow:bug-repro-triager when the bug reveals the API contract in `docs/interfaces/` is itself incorrect (wrong error shape, missing endpoint, incorrect field type in the documentation) — correct the contract before the regression test is written so the test asserts the correct contracted behavior, not the previously-observed broken behavior
+- Append devflow:dependency-auditor after devflow:feature-implementer when the fix adds or modifies package manifests (package.json, requirements.txt, Cargo.toml, go.mod, Gemfile, etc.) — run before devflow:code-reviewer so audit findings are available as review context; if dependency-auditor reports Critical or High findings, escalate to Pipeline 10 before merging
 
 **Notes:**
 - Reproduce first — do not propose or apply a fix before the failure is confirmed
 - devflow:test-engineer writes a failing regression test before devflow:feature-implementer applies the fix
 - devflow:feature-implementer applies the minimal fix only — no unrelated cleanup or refactoring
+- When the bug involves a public API boundary with an existing contract in `docs/interfaces/`, devflow:test-engineer must read the contract before writing the regression test — the test should assert the correct contracted behavior, not the previously-observed broken behavior
 - Use devflow:session-continuity at session boundaries to preserve investigation and fix state across sessions
 - When devflow:context-mapper has run, all downstream workers must read the context map from `docs/context-maps/` before loading any project files — the map is the scoping contract for the pipeline
 - **Maintenance note:** Pipeline 3 and Pipeline 4 share identical completion rules — when updating Transition or completion Notes in one, apply the same change to the other
 
 **Transition:**
 - devflow:receiving-code-review if devflow:code-reviewer returns feedback that requires fixes — after fixes are applied, re-run devflow:code-reviewer then proceed to devflow:acceptance-checker
+- devflow:code-reviewer or devflow:acceptance-checker determines the contract in `docs/interfaces/` is incorrect or insufficient → route back to devflow:interface-designer for a revision, then re-run devflow:feature-implementer (changed sections only) and devflow:test-engineer if the revision affects test expectations, then re-run devflow:code-reviewer — do not implement against a known-wrong contract
 - devflow:acceptance-checker finds unmet criteria due to missing implementation → return to devflow:feature-implementer, then re-run devflow:test-engineer and devflow:code-reviewer before re-checking
 - devflow:acceptance-checker finds unmet criteria due to missing test coverage → return to devflow:test-engineer, then re-run devflow:code-reviewer before re-checking
 - devflow:finishing-a-development-branch when all acceptance criteria are met
@@ -273,9 +288,11 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - Prepend devflow:test-engineer if behavior-preservation risk is non-trivial and existing coverage is insufficient
 - Prepend devflow:using-git-worktrees before devflow:code-simplifier when the project uses git — creates an isolated worktree and feature branch before any code changes begin
 - Insert devflow:context-mapper after devflow:task-planner when the refactor targets a shared module — maps reverse dependents before any changes begin so the blast area is known upfront
+- Append devflow:interface-designer after devflow:acceptance-checker when the refactor changes the public surface of a module or endpoint with an existing contract in `docs/interfaces/` (renamed parameter, restructured export, changed return shape) — updates the contract to match the confirmed-correct simplified shape; runs last so the contract reflects only the accepted final state
 
 **Notes:**
 - devflow:code-simplifier must not alter external behavior or broaden scope beyond the refactor target
+- When the refactor target has an existing contract in `docs/interfaces/`, devflow:code-reviewer must verify the simplified implementation still matches the contract — contract drift is a defect even if all tests pass, because callers depend on the documented shape; surface any drift as a Critical Issue
 - devflow:acceptance-checker confirms behavior is preserved — not improved or extended
 - Use devflow:session-continuity at session boundaries to preserve refactor state across sessions
 - When devflow:context-mapper has run, all downstream workers must read the context map from `docs/context-maps/` before loading any project files — the map is the scoping contract for the pipeline
@@ -283,7 +300,7 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 **Transition:**
 - devflow:receiving-code-review if devflow:code-reviewer returns feedback that requires fixes — after fixes are applied, re-run devflow:code-reviewer then proceed to devflow:acceptance-checker
 - devflow:acceptance-checker finds unmet criteria due to altered behavior → return to devflow:code-simplifier, then re-run devflow:code-reviewer before re-checking
-- devflow:acceptance-checker finds unmet criteria due to insufficient test coverage to confirm behavior preservation → return to devflow:test-engineer, then re-run devflow:code-reviewer before re-checking
+- devflow:acceptance-checker finds unmet criteria due to insufficient test coverage to confirm behavior preservation → add devflow:test-engineer before devflow:code-simplifier if not already present in this pipeline run, then re-run devflow:code-simplifier and devflow:code-reviewer before re-checking
 - devflow:finishing-a-development-branch when all acceptance criteria are met
 
 ---
@@ -313,7 +330,8 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - devflow:receiving-code-review if devflow:code-reviewer returns feedback on test quality or shared test infrastructure — after fixes are applied, re-run devflow:code-reviewer before closing
 - Coverage gaps remain after review → return to devflow:test-engineer for another pass
 - Coverage gaps require production code changes to enable testability → route to Pipeline 3 (New feature) or Pipeline 4 (Bug fix) as appropriate
-- devflow:finishing-a-development-branch when all coverage goals are met
+- devflow:code-reviewer returns no blocking issues and all coverage goals are confirmed (when the devflow:acceptance-checker Variant is not active) → devflow:finishing-a-development-branch
+- devflow:acceptance-checker confirms all coverage criteria met (when the devflow:acceptance-checker Variant is active) → devflow:finishing-a-development-branch
 
 ---
 
@@ -329,7 +347,7 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 **Variants:**
 - Add devflow:acceptance-checker if formal acceptance criteria need to be verified against the diff
 - Add devflow:test-engineer if review surfaces missing or insufficient coverage — prepend devflow:using-git-worktrees before devflow:test-engineer when the project uses git, since test-engineer produces real file changes
-- Add devflow:find-bugs when the review is security-focused or the diff touches auth, input handling, or external calls
+- Add devflow:find-bugs when the review is security-focused or the diff touches auth, input handling, or external calls — for a full threat-model-led security audit use Pipeline 10 instead
 - Insert devflow:context-mapper before devflow:code-reviewer when reviewing changes to shared modules — the Reverse Dependents list directly informs regression risk assessment
 
 **Notes:**
@@ -339,9 +357,10 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 - When devflow:context-mapper has run, devflow:code-reviewer must read the context map from `docs/context-maps/` before loading any project files — use the Reverse Dependents list to scope the blast-area review
 
 **Transition:**
-- devflow:receiving-code-review if review feedback needs to be processed and acted on — after fixes are applied, re-run devflow:code-reviewer to confirm the issues are resolved
+- devflow:code-reviewer returns feedback → devflow:receiving-code-review to process and document the findings; route to Pipeline 3 (New feature) or Pipeline 4 (Bug fix) to apply the fixes, then return to Pipeline 7 for a confirmation review pass — Pipeline 7 does not implement
 - devflow:acceptance-checker finds unmet criteria → Pipeline 7 does not implement — route to Pipeline 3 (New feature) or Pipeline 4 (Bug fix) as appropriate to address the gaps, then return to Pipeline 7 for a final review pass
-- devflow:finishing-a-development-branch when devflow:code-reviewer returns no blocking issues and all acceptance criteria are met
+- devflow:code-reviewer returns no blocking issues (and the devflow:acceptance-checker Variant is not active) → devflow:finishing-a-development-branch
+- devflow:acceptance-checker confirms all criteria met (when the devflow:acceptance-checker Variant is active) → devflow:finishing-a-development-branch
 
 ---
 
@@ -368,6 +387,70 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 
 ---
 
+### 9) Performance / optimization
+
+**Use when:**
+- a feature or component is measurably slow or fails to meet a performance target
+- a performance regression has been introduced by a recent change
+- optimization work is requested on any part of the system
+
+**Default pipeline:** `performance-profiler → test-engineer → feature-implementer → code-reviewer → acceptance-checker`
+
+**Variants:**
+- Prepend devflow:using-git-worktrees before devflow:test-engineer when the project uses git — creates an isolated worktree and branch before any optimization changes begin
+- Insert devflow:context-mapper after devflow:performance-profiler when the hotspot implicates a shared module — maps reverse dependents so optimization changes do not silently degrade callers
+- Skip devflow:test-engineer if the project has no benchmarking infrastructure and adding it is explicitly out of scope — note the gap
+- Append devflow:docs-updater when performance characteristics are documented (SLAs, benchmarks in README, API contracts)
+
+**Notes:**
+- devflow:performance-profiler must establish measurable baselines and identify the concrete hotspot before devflow:feature-implementer begins — never optimize without a measured target
+- If devflow:performance-profiler cannot identify a concrete hotspot (tooling unavailable, environment not representative), stop and resolve the measurement gap before proceeding — do not guess
+- devflow:feature-implementer addresses one hotspot at a time — do not combine multiple optimizations in a single pass
+- devflow:acceptance-checker validates before/after measurements against the criteria defined by devflow:performance-profiler — subjective "it feels faster" is not evidence
+- Use devflow:session-continuity at session boundaries to preserve profiling state and baseline measurements across sessions
+- When devflow:context-mapper has run, all downstream workers must read the context map from `docs/context-maps/` before loading any project files — the map is the scoping contract for the pipeline
+
+**Transition:**
+- devflow:receiving-code-review if devflow:code-reviewer returns feedback — after fixes are applied, devflow:test-engineer re-runs the benchmark if the fix touches the optimized code path, then re-run devflow:code-reviewer and proceed to devflow:acceptance-checker
+- devflow:acceptance-checker finds performance target not met → return to devflow:feature-implementer for another targeted optimization pass; devflow:test-engineer re-runs the benchmark to take the new measurement, then devflow:code-reviewer before re-checking
+- devflow:acceptance-checker finds a regression introduced → return to devflow:feature-implementer to revert or correct; devflow:test-engineer re-runs the benchmark to confirm the regression is cleared, then devflow:code-reviewer before re-checking
+- devflow:finishing-a-development-branch when performance targets are met and no regressions are introduced
+
+---
+
+### 10) Security audit
+
+**Use when:**
+- a security audit is explicitly requested on a change or feature
+- the change introduces new user inputs, authentication/authorization paths, external calls, or sensitive data handling
+- a new dependency is introduced or an existing one is significantly upgraded
+- a pre-release or pre-merge security gate is required
+
+**Default pipeline:** `threat-modeler → dependency-auditor → find-bugs`
+
+**Variants:**
+- Prepend devflow:using-git-worktrees before devflow:threat-modeler when remediation findings are expected — isolates audit work from main branch
+- Skip devflow:dependency-auditor if no dependencies were added or changed and the last audit is recent — document the decision
+- Skip devflow:threat-modeler if the audit scope is purely dependency-level (no application code changes) — dependency-auditor can run standalone
+- Append devflow:feature-implementer pipeline (Pipeline 3 or 4) when findings require code remediation — the security pipeline finds, not fixes
+- Append devflow:docs-updater when findings result in documented security decisions (accepted risk, threat model in docs, updated security policy)
+
+**Notes:**
+- devflow:threat-modeler produces the threat checklist that devflow:find-bugs uses as its investigation context — without it, find-bugs operates on generic heuristics rather than change-specific threats
+- devflow:dependency-auditor findings feed into devflow:find-bugs context — the auditor notes which package APIs and call sites to prioritize in code review
+- Security audit (Pipeline 10) is separate from functional correctness review (Pipeline 7) — run both independently on the same change; do not conflate them
+- devflow:find-bugs does not fix anything — it produces a findings report; confirmed vulnerabilities exit to Pipeline 4 (bug fix) with the security report as triage input
+- If no audit tooling is available for the detected ecosystem, devflow:dependency-auditor stops and reports the gap — do not proceed with findings from memory
+- Use devflow:session-continuity at session boundaries to preserve threat model and audit findings across sessions
+
+**Transition:**
+- devflow:find-bugs finds code vulnerabilities requiring fixes → exit to Pipeline 4 for each confirmed finding, with the security report as triage input for devflow:bug-repro-triager
+- devflow:find-bugs finds dependency issues requiring upgrades → resolve dependency upgrades, re-run devflow:dependency-auditor to confirm clean, then re-run devflow:find-bugs
+- devflow:find-bugs finds no actionable issues → close audit; optionally append devflow:docs-updater to record the clean audit or document accepted risks
+- Security audit requested alongside a feature review → run Pipeline 10 in a separate pass before or after Pipeline 7; do not merge the two pipelines
+
+---
+
 ## Worker Roles and Boundaries (Enforce Role Discipline)
 
 Workers must stay in role. Do not let one worker silently do another worker's job unless explicitly requested.
@@ -377,8 +460,9 @@ Workers must stay in role. Do not let one worker silently do another worker's jo
 | devflow:interview | Extract requirements, constraints, and acceptance criteria through structured one-at-a-time questioning; produce a written spec document | Propose designs, make architectural decisions, or write plans |
 | devflow:brainstorming | Turn a written spec into a concrete design by exploring approaches and trade-offs; produce an agreed design ready for planning | Write a plan, implement code, or gather requirements (that is devflow:interview) |
 | devflow:task-planner | Clarify goals, define scope, plan steps, risks, tests, done criteria | Write production code |
+| devflow:interface-designer | Define the interface contract (OpenAPI 3.x spec, TypeScript interfaces, or AsyncAPI schema) for a new or modified public API, shared module, or service boundary before implementation begins; save artifact to `docs/interfaces/` | Write implementation code; make technology selection decisions; review application logic |
 | devflow:context-mapper | Trace direct dependencies and reverse dependents of target files; identify associated test files and coverage gaps; write a context map for downstream workers to consume | Modify any file; make implementation decisions; recurse into transitive dependencies without explicit instruction |
-| devflow:feature-implementer | Implement one scoped plan step with minimal diff | Broad refactor, rewrite plan, review code, do unrelated cleanup |
+| devflow:feature-implementer | Implement one scoped plan step with minimal diff — when devflow:interface-designer has run, implement against the contract in `docs/interfaces/`; deviations require updating the contract first | Broad refactor, rewrite plan, review code, do unrelated cleanup |
 | devflow:test-engineer | Write/update tests, regression coverage, edge cases, repro tests | Change production code unless absolutely necessary and explicitly justified |
 | devflow:code-reviewer | Critique correctness, regressions, standards, test adequacy | Rewrite implementation unless asked |
 | devflow:find-bugs | Audit branch diffs for security vulnerabilities, bugs, and logic issues using a structured checklist | Make code changes; review for style or readability; debug known failures (use devflow:systematic-debugging for that) |
@@ -386,12 +470,16 @@ Workers must stay in role. Do not let one worker silently do another worker's jo
 | devflow:docs-updater | Update docs/readme/changelog/migration notes for recent changes | Invent undocumented behavior |
 | devflow:api-researcher | Research external APIs/libraries and produce implementation guidance | Implement production code unless explicitly asked |
 | devflow:bug-repro-triager | Produce repro steps, hypotheses, investigation plan, failing-test strategy | Implement fix |
+| devflow:performance-profiler | Establish performance baselines through profiling, identify concrete hotspots with evidence, define measurable acceptance criteria before optimization begins | Optimize or rewrite code; recommend changes without profiling evidence |
+| devflow:threat-modeler | Map attack surface for a change (inputs, auth paths, trust boundaries, external calls, sensitive data flows); produce an applicability-assessed threat checklist for downstream security workers | Fix vulnerabilities; review code for correctness; scan dependencies (that is devflow:dependency-auditor) |
+| devflow:dependency-auditor | Run ecosystem-native scanners (npm audit, pip-audit, cargo audit, etc.); report CVEs, license issues, and outdated pins with evidence; produce handoff notes for the downstream worker (devflow:find-bugs in Pipeline 10; devflow:code-reviewer in Pipeline 3/4) | Fix vulnerabilities or upgrade packages; review application code; produce findings from memory when scanner tooling is unavailable |
 | devflow:dispatching-parallel-agents | Split independent problem domains across concurrent agents when 3+ failures or tasks have no shared state | Investigate related failures together; work on problems with shared state or file conflicts |
 | devflow:code-simplifier | Orchestrate code simplification — dispatches devflow:code-simplification to do the work | Simplify code directly |
 | devflow:code-simplification | Simplify/refine recently modified code while preserving behavior | Alter functionality or broaden scope |
 | devflow:research | Research any technology, library, framework, or concept and produce actionable findings | Write production code or make implementation decisions |
 | devflow:spike-investigator | Run hands-on experiments to confirm or refute a hypothesis; works in throwaway mode | Write production-ready code, enforce TDD, or expand scope beyond the stated hypothesis |
 | devflow:poc-retrospective | Capture spike decision, evidence, key learnings, carry-forwards, and cleanup checklist | Implement anything or reopen a closed investigation |
+| devflow:adr-writer | Write a structured Architecture Decision Record documenting the decision, options considered, rationale, trade-offs, and conditions for revisiting; save to `docs/decisions/` | Evaluate options or make the decision (that is devflow:technology-selector or devflow:brainstorming); implement anything |
 | devflow:hypothesis-validator | Design a minimal experiment with explicit criteria, run it, and evaluate the result against pre-defined evidence | Expand beyond the single stated assumption or produce implementation code |
 | devflow:technology-selector | Evaluate 2–4 technology options against stated requirements and produce a single recommendation with trade-offs | Implement the chosen technology or evaluate options not relevant to the stated requirement |
 | devflow:scope-estimator | Produce rough effort/complexity sizing per work area with confidence levels and expansion risks | Produce step-by-step implementation plans or make architectural decisions |
@@ -484,8 +572,8 @@ At minimum, all worker outputs must include:
 - `Current agent: research`
 
 ### Example: "We're integrating Stripe for the first time"
-- `Selected worker agents: api-researcher → task-planner → feature-implementer → test-engineer → code-reviewer`
-- `Reason: unfamiliar external API — research before planning (pipeline 2)`
+- `Selected worker agents: api-researcher`
+- `Reason: unfamiliar external API — research gate before planning; carry findings into task-planner at the start of Pipeline 3 (pipeline 2)`
 - `Current agent: api-researcher`
 
 ### Example: "Add pagination to the users list"
@@ -517,6 +605,31 @@ At minimum, all worker outputs must include:
 - `Selected worker agents: docs-updater`
 - `Reason: documentation update scoped to recent code changes — no implementation intended (pipeline 8)`
 - `Current agent: docs-updater`
+
+### Example: "The search endpoint is timing out under load — bring p95 latency under 200ms"
+- `Selected worker agents: performance-profiler → test-engineer → feature-implementer → code-reviewer → acceptance-checker`
+- `Reason: performance target with measurable threshold — profile the hotspot first, then codify criteria as a failing benchmark before optimizing (pipeline 9)`
+- `Current agent: performance-profiler`
+
+### Example: "We need to decide between PostgreSQL and MongoDB for the new service"
+- `Selected worker agents: technology-selector → adr-writer → writing-plans`
+- `Reason: technology choice between named alternatives with significant architectural consequences — decision must be documented before planning begins (pipeline 0 + adr-writer variant)`
+- `Current agent: technology-selector`
+
+### Example: "We're about to ship the new payment flow — run a security audit first"
+- `Selected worker agents: threat-modeler → dependency-auditor → find-bugs`
+- `Reason: pre-release security gate on a change that introduces auth paths, external calls, and sensitive data handling (pipeline 10)`
+- `Current agent: threat-modeler`
+
+### Example: "Add a user search endpoint to the REST API"
+- `Selected worker agents: task-planner → interface-designer → feature-implementer → test-engineer → code-reviewer → acceptance-checker`
+- `Reason: new REST endpoint consumed by a frontend client — define the contract before implementation so caller and implementer agree on the shape before any code is written (pipeline 3 + interface-designer variant)`
+- `Current agent: task-planner`
+
+### Example: "Add the stripe package and implement payment processing"
+- `Selected worker agents: task-planner → feature-implementer → test-engineer → dependency-auditor → code-reviewer → acceptance-checker`
+- `Reason: new feature that introduces an external package — audit newly added dependencies before code review (pipeline 3 + dependency-auditor variant)`
+- `Current agent: task-planner`
 
 ---
 

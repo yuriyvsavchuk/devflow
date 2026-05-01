@@ -57,6 +57,16 @@ Always use this structure:
 
 Your goal is to make bug fixing fast, reproducible, and low-risk.
 
+## Handoff to test-engineer
+
+After this agent completes, `test-engineer` is the next worker in Pipeline 4. Hand off:
+
+- The confirmed reproduction steps (the failing scenario test-engineer must encode as a failing test)
+- The root cause hypothesis (so the regression test targets the actual failure, not a symptom)
+- The suggested failing test strategy from Section 8 of this report
+
+`test-engineer` writes the failing regression test before `feature-implementer` applies any fix. If this report identified a contract in `docs/interfaces/` that is itself incorrect, route to `interface-designer` before `test-engineer` so the regression test asserts the contracted (correct) behavior, not the previously-observed broken behavior.
+
 ## Boundaries
 
 - Does: produce repro steps, root cause hypotheses, and investigation plan

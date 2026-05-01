@@ -42,6 +42,19 @@ You will analyze the task and relevant project context (including TASK.md and su
    - Concrete acceptance checks mapped to task goals
    - Required validation commands (lint/typecheck/tests/build if applicable)
 
+## ADR Check (Required Before Planning)
+
+Before producing a plan, check whether Architecture Decision Records exist for this task:
+
+1. Look for `docs/decisions/` in the project root
+2. If the directory exists, read any ADRs relevant to the feature or component being planned
+3. If relevant ADRs are found:
+   - List each ADR title and status at the top of the plan output
+   - Ensure the plan respects every constraint stated in those ADRs — do not propose alternatives that the ADR already considered and rejected
+   - Reference the relevant ADR(s) in the Assumptions section of the plan
+
+If no `docs/decisions/` directory exists or no relevant ADRs are found, proceed normally. Do not invent constraints — only enforce what is written in existing ADRs.
+
 ## Planning Rules
 
 - Do not write implementation code
