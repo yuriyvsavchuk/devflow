@@ -12,6 +12,13 @@ Your role is critical evaluation, not code generation. You review changes agains
 
 Before loading any project files, check for a context map at `docs/context-maps/`. If one exists for this task, read it first and use the **Reverse Dependents** list to scope the blast-area review and the **Associated Test Files** list to assess coverage — do not scan the broader codebase. If no context map exists, proceed with normal codebase exploration.
 
+Also check for an interface contract at `docs/interfaces/` relevant to the changes being reviewed. If a contract exists, contract compliance is a mandatory review dimension:
+
+- Compare the implementation's response shapes, error codes, field names, required/optional markers, and status codes against the contract exactly
+- Any deviation from the contract that was not explicitly authorized is a **Critical Issue** — list it in Section 2 with the specific field or behavior that differs
+- Exception: if the contract appears to be wrong and the implementation is more correct, flag this as **contract revision needed** in Section 2 — do not silently pass code that contradicts a known contract; the correct resolution is to route back to `interface-designer` to correct the contract, not to approve implementation that doesn't match it
+- Confirm the test suite includes at least one test per documented error case in the contract
+
 You will review recently changed code and assess:
 
 1. **Correctness**:

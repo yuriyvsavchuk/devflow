@@ -10,7 +10,7 @@ A practical guide to the Devflow framework — what it is, why it exists, how to
 2. [Core Concepts](#2-core-concepts)
 3. [Framework Structure](#3-framework-structure)
 4. [Architecture Overview](#4-architecture-overview)
-5. [The Nine Pipelines](#5-the-nine-pipelines)
+5. [The Eleven Pipelines](#5-the-eleven-pipelines)
 6. [Pipeline Flow Diagrams](#6-pipeline-flow-diagrams)
 7. [Usage Examples](#7-usage-examples)
 8. [Installation — Claude Code](#8-installation--claude-code)
@@ -76,18 +76,20 @@ An agent knows what it **does** and — equally important — what it **does not
 
 ### Pipelines
 
-A **pipeline** is an ordered sequence of workers matched to a task type. There are nine pipelines covering the full software development lifecycle:
+A **pipeline** is an ordered sequence of workers matched to a task type. There are eleven pipelines covering the full software development lifecycle:
 
 ```
-0  Requirements gathering    → understand the problem first
-1  Spike / POC investigation → validate before committing
-2  Unfamiliar API / library  → research gate before building
-3  New feature               → plan → build → test → review → verify
-4  Bug fix                   → reproduce → test → fix → review → verify
-5  Refactor                  → plan → simplify → review → verify
-6  Test-only                 → add coverage without touching production
-7  Review-only               → evaluate without implementing
-8  Docs-only                 → document what shipped
+0   Requirements gathering     → understand the problem first
+1   Spike / POC investigation  → validate before committing
+2   Unfamiliar API / library   → research gate before building
+3   New feature                → plan → build → test → review → verify
+4   Bug fix                    → reproduce → test → fix → review → verify
+5   Refactor                   → plan → simplify → review → verify
+6   Test-only                  → add coverage without touching production
+7   Review-only                → evaluate without implementing
+8   Docs-only                  → document what shipped
+9   Performance / optimization → profile → optimize targeted area → verify
+10  Security audit             → threat-model → audit dependencies → code security review
 ```
 
 ### Worker Self-Identification
@@ -112,13 +114,14 @@ This makes compliance visible and auditable. You always know which worker is act
 
 ## 3. Framework Structure
 
-### Skills Catalog (21 skills)
+### Skills Catalog (22 skills)
 
 | Category | Skill | Purpose |
 |---|---|---|
 | **Routing** | `using-devflow` | Master router — selects pipeline before any work begins |
 | **Requirements** | `interview` | Structured questioning to produce a written spec |
 | | `brainstorming` | Turns a spec into a concrete design through dialogue |
+| **Decision records** | `adr-writer` | Documents significant architectural decisions in `docs/decisions/` before implementation begins |
 | **Investigation** | `spike-executor` | Orchestrates full spike/POC lifecycle |
 | | `hypothesis-validator` | Minimal experiment to test one specific assumption |
 | | `poc-retrospective` | Captures spike decision, learnings, carry-forwards |
@@ -138,7 +141,7 @@ This makes compliance visible and auditable. You always know which worker is act
 | **Meta** | `writing-skills` | TDD-based approach to creating and testing new skills |
 | **Debugging** | `systematic-debugging` | Root-cause investigation before proposing fixes |
 
-### Agents Catalog (14 agents)
+### Agents Catalog (18 agents)
 
 | Agent | Role | Model |
 |---|---|---|
@@ -156,6 +159,10 @@ This makes compliance visible and auditable. You always know which worker is act
 | `spike-investigator` | Hands-on throwaway experimentation to validate a hypothesis | Sonnet |
 | `technology-selector` | Evaluates technology options and produces a single recommendation with trade-offs | Opus |
 | `scope-estimator` | Rough effort and complexity sizing before writing a full plan | Sonnet |
+| `performance-profiler` | Establishes baselines, identifies hotspots through profiling, defines measurable acceptance criteria before optimization | Sonnet |
+| `threat-modeler` | Maps attack surface for a change (inputs, auth paths, trust boundaries, data flows) and produces a threat checklist for security review | Sonnet |
+| `dependency-auditor` | Runs ecosystem-native scanners (npm/pip/cargo audit), flags CVEs, license issues, and outdated pins | Sonnet |
+| `interface-designer` | Defines interface contracts (OpenAPI 3.x specs, TypeScript interfaces, AsyncAPI schemas) before implementation begins — saves to `docs/interfaces/` | Sonnet |
 
 **Model tiers:** Opus for high-stakes reasoning (planning, architecture decisions); Haiku for mechanical tasks (dependency mapping, doc sync); Sonnet for code reasoning, analysis, and writing.
 
@@ -186,6 +193,8 @@ graph TD
         p6[6: Tests]:::pipeline
         p7[7: Review]:::pipeline
         p8[8: Docs]:::pipeline
+        p9[9: Performance]:::pipeline
+        p10[10: Security]:::pipeline
     end
 
     subgraph Workers[Worker Agents — examples]
@@ -193,13 +202,13 @@ graph TD
         w2[feature-implementer]:::worker
         w3[test-engineer]:::worker
         w4[code-reviewer]:::worker
-        w5[...10 more agents]:::other
+        w5[...14 more agents]:::other
     end
 
     output([Structured Output<br/>+ Compliance Footer]):::startEnd
 
     task --> router
-    router --> p0 & p1 & p2 & p3 & p4 & p5 & p6 & p7 & p8
+    router --> p0 & p1 & p2 & p3 & p4 & p5 & p6 & p7 & p8 & p9 & p10
     p3 --> w1 & w2 & w3 & w4
     p4 --> w3 & w2 & w4 & w5
     w1 & w2 & w3 & w4 --> output
@@ -220,6 +229,8 @@ graph LR
     classDef tst fill:#D5E8D4,stroke:#555
     classDef rev fill:#DAE8FC,stroke:#555
     classDef doc fill:#F8CECC,stroke:#555
+    classDef perf fill:#FFD6E7,stroke:#555
+    classDef sec fill:#F4CCCC,stroke:#555
 
     p0[0<br/>Requirements]:::req
     p1[1<br/>Spike/POC]:::spike
@@ -230,6 +241,8 @@ graph LR
     p6[6<br/>Tests]:::tst
     p7[7<br/>Review]:::rev
     p8[8<br/>Docs]:::doc
+    p9[9<br/>Performance]:::perf
+    p10[10<br/>Security]:::sec
 
     p0 -.->|unknown feasibility| p1
     p0 -->|proceed| p3
@@ -239,15 +252,23 @@ graph LR
     p3 -.->|coverage gap| p6
     p3 -.->|review requested| p7
     p3 -.->|docs needed| p8
+    p3 -.->|perf concern| p9
+    p3 -.->|security surface| p10
     p4 -.->|coverage gap| p6
+    p4 -.->|perf regression| p9
+    p4 -.->|security concern| p10
     p5 -.->|review feedback| p7
     p6 -.->|production change needed| p3
+    p6 -.->|bug-driven gap| p4
     p7 -.->|unmet criteria| p3
+    p7 -.->|unmet criteria| p4
+    p9 -.->|regression found| p4
+    p10 -.->|vulnerability confirmed| p4
 ```
 
 ---
 
-## 5. The Nine Pipelines
+## 5. The Eleven Pipelines
 
 Each pipeline maps a task type to an ordered sequence of workers. Workers are selected, announced, and executed in sequence. The router always makes the pipeline visible before work begins.
 
@@ -271,6 +292,8 @@ interview → brainstorming → scope-estimator → writing-plans
 **Useful variants:**
 - Skip `interview` if requirements are partially specified — start directly with `brainstorming`
 - Insert `spike-executor` between `brainstorming` and `scope-estimator` when feasibility of the proposed design is unknown
+- Insert `adr-writer` after `brainstorming` when the design session produces a significant architectural decision — a choice affecting multiple components, hard to reverse, or made between named alternatives; write the ADR before `scope-estimator` or `writing-plans` begins
+- Insert `adr-writer` after `technology-selector` (when used as a Variant) — the recommendation is the decision that the ADR records
 
 **Exit transitions:**
 - Scope is manageable → `writing-plans`, then route to Pipeline 3 or 4
@@ -297,9 +320,10 @@ research → spike-investigator → poc-retrospective
 - Replace `spike-investigator` with `hypothesis-validator` when the question is narrow and one specific assumption needs a designed experiment
 - Insert `technology-selector` after `research` when the investigation includes a technology choice between named options
 - Prepend `using-git-worktrees` before `spike-investigator` when the spike produces code artifacts — keeps throwaway code on an isolated branch
+- Append `adr-writer` after `poc-retrospective` when the Proceed decision constitutes an architectural commitment — the retrospective records what the experiment revealed; the ADR records the architectural decision that follows from it
 
 **Exit transitions:**
-- Proceed → `writing-plans` in a new session, starting from the retrospective document
+- Proceed → `writing-plans` in a new session, starting from the retrospective and any ADR written in this session
 - Pivot → new spike with refined hypothesis
 - Abandon → `poc-retrospective` closes the record; no further work
 
@@ -322,6 +346,7 @@ This pipeline is a **research gate only** — it produces findings, not implemen
 
 **Useful variants:**
 - Prepend `technology-selector` when the library or framework has not yet been chosen and two or more options are under consideration
+- Append `adr-writer` after `api-researcher` when adopting this library or API is a significant architectural commitment — documents the adoption decision before Pipeline 3 begins
 
 **Exit transitions:**
 - Findings are clear and approach is viable → Pipeline 3 (Feature build), carrying research findings into `task-planner`
@@ -348,11 +373,15 @@ task-planner → feature-implementer → test-engineer → code-reviewer → acc
 **Useful variants:**
 - Prepend `scope-estimator` when scope is unclear or the feature touches many areas
 - Prepend `using-git-worktrees` before `feature-implementer` to isolate work on a feature branch
-- Insert `context-mapper` after `task-planner` when the codebase is large or the change touches a shared module — maps reverse dependencies and existing test coverage so downstream workers don't scan the full codebase
+- Insert `interface-designer` after `task-planner` when the change introduces or modifies a public API endpoint, shared module exports, or service boundary — produces a binding contract (OpenAPI 3.x spec, TypeScript interfaces, or AsyncAPI schema) in `docs/interfaces/` before `feature-implementer` begins; any deviation from the contract requires updating it first
+- Move `test-engineer` before `feature-implementer` when `interface-designer` has run and the project follows TDD — the contract provides complete behavioral specifications (all endpoints, parameters, and error cases), enabling test-first; `test-engineer` writes contract compliance tests (RED) before any production code is written; `feature-implementer` then implements to GREEN
+- Insert `context-mapper` after `task-planner` (or after `interface-designer` when both are active) when the codebase is large or the change touches a shared module — maps reverse dependencies and existing test coverage so downstream workers don't scan the full codebase
+- Append `dependency-auditor` after `test-engineer` when the implementation adds or modifies package manifests (package.json, requirements.txt, Cargo.toml, go.mod, Gemfile, etc.) — surfaces CVE exposure, license conflicts, and outdated pins from newly introduced packages before the code reviewer sees the diff; if Critical or High findings are reported, escalate to Pipeline 10 before merging
 - Append `docs-updater` when public behavior, API, configuration, or migration notes change
 
 **Exit transitions:**
 - `code-reviewer` returns feedback → `receiving-code-review`, then re-run `code-reviewer`, then proceed to `acceptance-checker`
+- `code-reviewer` or `acceptance-checker` determines the contract in `docs/interfaces/` is incorrect → route to `interface-designer` for a revision, then re-run `feature-implementer` (changed sections only) and `test-engineer` if the revision affects test expectations, then re-run `code-reviewer`
 - `acceptance-checker` finds missing implementation → return to `feature-implementer`, re-run `test-engineer` and `code-reviewer` before re-checking
 - `acceptance-checker` finds missing test coverage → return to `test-engineer`, re-run `code-reviewer` before re-checking
 - All acceptance criteria met → `finishing-a-development-branch`
@@ -378,8 +407,15 @@ bug-repro-triager → test-engineer → feature-implementer → code-reviewer �
 - Prepend `using-git-worktrees` before `feature-implementer` to isolate the fix on a branch
 - Use `dispatching-parallel-agents` when 3 or more independent failures exist across different subsystems
 - Insert `context-mapper` after `bug-repro-triager` when the codebase is large or the failure implicates a shared module
+- Insert `interface-designer` after `bug-repro-triager` when the bug reveals the API contract in `docs/interfaces/` is itself incorrect (wrong error shape, missing endpoint, incorrect field type in the documentation) — correct the contract before the regression test is written so the test asserts the correct contracted behavior, not the previously-observed broken behavior
+- Append `dependency-auditor` after `feature-implementer` when the fix adds or modifies package manifests (package.json, requirements.txt, Cargo.toml, go.mod, Gemfile, etc.) — surfaces CVE exposure, license conflicts, and outdated pins from newly introduced packages before the code reviewer sees the diff; if Critical or High findings are reported, escalate to Pipeline 10 before merging
 
-**Exit transitions:** Same as Pipeline 3 — code-reviewer loop, acceptance-checker loop, then `finishing-a-development-branch`.
+**Exit transitions:**
+- `code-reviewer` returns feedback → `receiving-code-review`, then re-run `code-reviewer`, then proceed to `acceptance-checker`
+- `code-reviewer` or `acceptance-checker` determines the contract in `docs/interfaces/` is incorrect → route to `interface-designer` for a revision, then re-run `feature-implementer` (changed sections only) and `test-engineer` if the revision affects test expectations, then re-run `code-reviewer`
+- `acceptance-checker` finds missing implementation → return to `feature-implementer`, re-run `test-engineer` and `code-reviewer` before re-checking
+- `acceptance-checker` finds missing test coverage → return to `test-engineer`, re-run `code-reviewer` before re-checking
+- All acceptance criteria met → `finishing-a-development-branch`
 
 > **Note:** Pipelines 3 and 4 share identical completion rules. Any change to the Transition or completion behavior of one applies to the other.
 
@@ -398,16 +434,18 @@ task-planner → code-simplifier → code-reviewer → acceptance-checker
 - `code-simplifier` must not alter external behavior or broaden scope beyond the refactor target
 - `acceptance-checker` confirms behavior is preserved — not improved or extended
 - If behavior-preservation risk is non-trivial and existing coverage is insufficient, add `test-engineer` before `code-simplifier`
+- When the refactor target has an existing contract in `docs/interfaces/`, `code-reviewer` must verify the simplified implementation still matches the contract — contract drift is a defect even if all tests pass
 
 **Useful variants:**
 - Prepend `test-engineer` when existing test coverage is insufficient to confirm behavior preservation
 - Prepend `using-git-worktrees` before `code-simplifier` to isolate refactor work on a branch
 - Insert `context-mapper` after `task-planner` when the refactor targets a shared module — maps reverse dependents before any changes begin
+- Append `interface-designer` after `acceptance-checker` when the refactor changes the public surface of a module or endpoint with an existing contract in `docs/interfaces/` (renamed parameter, restructured export, changed return shape) — updates the contract to match the confirmed-correct simplified shape
 
 **Exit transitions:**
 - `code-reviewer` returns feedback → `receiving-code-review`, re-run `code-reviewer`, then proceed to `acceptance-checker`
 - `acceptance-checker` finds altered behavior → return to `code-simplifier`, re-run `code-reviewer` before re-checking
-- `acceptance-checker` finds insufficient test coverage → return to `test-engineer`, re-run `code-reviewer` before re-checking
+- `acceptance-checker` finds insufficient test coverage → add `test-engineer` before `code-simplifier` if not already in this pipeline run, then re-run `code-simplifier` and `code-reviewer` before re-checking
 - All acceptance criteria met → `finishing-a-development-branch`
 
 ---
@@ -434,7 +472,8 @@ test-engineer → code-reviewer
 - `code-reviewer` returns feedback → `receiving-code-review`, re-run `code-reviewer` before closing
 - Coverage gaps remain after review → return to `test-engineer` for another pass
 - Coverage gaps require production code changes → route to Pipeline 3 (new feature) or Pipeline 4 (bug fix)
-- All coverage goals met → `finishing-a-development-branch`
+- `code-reviewer` returns no blocking issues and all coverage goals are confirmed (when the `acceptance-checker` Variant is not active) → `finishing-a-development-branch`
+- `acceptance-checker` confirms all coverage criteria met (when the `acceptance-checker` Variant is active) → `finishing-a-development-branch`
 
 ---
 
@@ -455,13 +494,14 @@ code-reviewer
 **Useful variants:**
 - Add `acceptance-checker` if formal acceptance criteria need to be verified against the diff
 - Add `test-engineer` if review surfaces missing or insufficient coverage — prepend `using-git-worktrees` since test-engineer produces real file changes
-- Add `find-bugs` when the review is security-focused or the diff touches auth, input handling, or external calls
+- Add `find-bugs` when the review is security-focused or the diff touches auth, input handling, or external calls — for a full threat-model-led security audit use Pipeline 10 instead
 - Insert `context-mapper` before `code-reviewer` when reviewing changes to shared modules — the Reverse Dependents list directly informs regression risk assessment
 
 **Exit transitions:**
-- `code-reviewer` returns feedback → `receiving-code-review`, re-run `code-reviewer` to confirm resolution
+- `code-reviewer` returns feedback → `receiving-code-review` to document findings; route to Pipeline 3 or 4 to apply fixes; return to Pipeline 7 for a confirmation review pass — Pipeline 7 does not implement
 - `acceptance-checker` finds unmet criteria → Pipeline 3 or 4, then return to Pipeline 7 for final review
-- `code-reviewer` returns no blocking issues → `finishing-a-development-branch`
+- `code-reviewer` returns no blocking issues (and the `acceptance-checker` Variant is not active) → `finishing-a-development-branch`
+- `acceptance-checker` confirms all criteria met (when the `acceptance-checker` Variant is active) → `finishing-a-development-branch`
 
 ---
 
@@ -487,6 +527,64 @@ docs-updater
 
 ---
 
+### Pipeline 9 — Performance / Optimization
+
+**Use when:** A feature or component is measurably slow, a performance regression has been introduced, or optimization work is explicitly requested.
+
+**Default pipeline:**
+```
+performance-profiler → test-engineer → feature-implementer → code-reviewer → acceptance-checker
+```
+
+**Key rules:**
+- `performance-profiler` establishes a measurable baseline and identifies the concrete hotspot before any code changes begin — the performance analog of "reproduce before fix"
+- If `performance-profiler` cannot identify a concrete hotspot (tooling unavailable, environment not representative), stop and resolve the measurement gap — do not proceed on guesswork
+- `feature-implementer` addresses one hotspot at a time — do not combine multiple optimizations in a single pass
+- `acceptance-checker` validates before/after measurements against the criteria defined by `performance-profiler` — "it feels faster" is not evidence
+
+**Useful variants:**
+- Prepend `using-git-worktrees` before `test-engineer` to isolate optimization work on a branch
+- Insert `context-mapper` after `performance-profiler` when the hotspot implicates a shared module — maps reverse dependents so optimization does not silently degrade callers
+- Skip `test-engineer` if the project has no benchmarking infrastructure and adding it is explicitly out of scope — note the gap
+- Append `docs-updater` when performance characteristics are externally documented (SLAs, benchmarks in README)
+
+**Exit transitions:**
+- `code-reviewer` returns feedback → `receiving-code-review`; if the fix touches the optimized code path, `test-engineer` re-runs the benchmark; then re-run `code-reviewer` and proceed to `acceptance-checker`
+- `acceptance-checker` finds target not met → return to `feature-implementer` for another targeted pass; `test-engineer` re-runs the benchmark to take the new measurement, then `code-reviewer` before re-checking
+- `acceptance-checker` finds a regression introduced → return to `feature-implementer` to revert or correct; `test-engineer` re-runs the benchmark to confirm the regression is cleared, then `code-reviewer` before re-checking
+- All performance targets met and no regressions introduced → `finishing-a-development-branch`
+
+---
+
+### Pipeline 10 — Security Audit
+
+**Use when:** A security audit is explicitly requested; the change introduces new auth paths, user inputs, external calls, or sensitive data handling; a new dependency is added or upgraded; a pre-release security gate is required.
+
+**Default pipeline:**
+```
+threat-modeler → dependency-auditor → find-bugs
+```
+
+**Key rules:**
+- `threat-modeler` maps the attack surface and produces a threat checklist *before* code review begins — `find-bugs` uses this as its investigation context, making security review change-specific rather than generic
+- Security audit (Pipeline 10) is separate from functional correctness review (Pipeline 7) — run both independently on the same change; do not conflate them
+- `find-bugs` produces findings only — confirmed vulnerabilities exit to Pipeline 4 (bug fix) with the security report as triage input; the security pipeline does not fix
+- If `dependency-auditor` has no scanner available for a detected ecosystem, it stops and reports the gap — do not proceed with findings from memory
+
+**Useful variants:**
+- Prepend `using-git-worktrees` before `threat-modeler` when remediation findings are expected
+- Skip `dependency-auditor` if no dependencies changed and the last audit is recent — document the decision
+- Skip `threat-modeler` if the scope is purely dependency-level (no application code changes)
+- Append Pipeline 3 or 4 when findings require code remediation
+- Append `docs-updater` when findings result in documented security decisions (accepted risk, threat model in ADR)
+
+**Exit transitions:**
+- `find-bugs` finds code vulnerabilities → exit to Pipeline 4 for each confirmed finding; the `find-bugs` report serves as triage input for `bug-repro-triager`
+- `find-bugs` finds dependency issues → resolve upgrades, re-run `dependency-auditor` to confirm clean, then re-run `find-bugs`
+- `find-bugs` finds no actionable issues → close audit; optionally append `docs-updater` to record the clean audit or document accepted risks
+
+---
+
 ## 6. Pipeline Flow Diagrams
 
 ### Pipeline 0 — Requirements Gathering
@@ -503,6 +601,7 @@ graph TD
     start([Vague Task / Idea]):::startEnd
     interview[interview<br/>Extract requirements<br/>one question at a time]:::work
     brainstorm[brainstorming<br/>Turn spec into concrete design]:::work
+    adr[adr-writer<br/>optional: significant architectural decision]:::optional
     scope[scope-estimator<br/>Size the work]:::planning
     plans[writing-plans<br/>Write implementation plan]:::planning
     decision{Scope decision}:::decision
@@ -513,12 +612,15 @@ graph TD
     start --> interview
     start -.->|partially specified| brainstorm
     interview --> brainstorm
+    brainstorm -.->|significant architectural decision| adr
+    adr --> scope
     brainstorm --> scope
     scope --> decision
     decision -->|manageable scope| plans
     decision -->|key unknown exists| p1
     decision -->|XL or low confidence| split
     plans --> p3_4
+    split -.->|each plan routes independently| p3_4
 ```
 
 ---
@@ -545,6 +647,7 @@ graph TD
     spike[spike-investigator<br/>Throwaway experiments — no TDD]:::spike
     retro[poc-retrospective<br/>Mandatory — capture decision + carry-forwards]:::retro
     sizing[scope-estimator<br/>optional: before committing to plan]:::optional
+    adr[adr-writer<br/>optional: architectural commitment]:::optional
     newsession{New Session<br/>start from retrospective}:::decision
     proceed([Proceed → writing-plans]):::proceed
     pivot([Pivot → New spike with refined hypothesis]):::pivot
@@ -561,7 +664,9 @@ graph TD
     spike --> retro
     retro -.-> sizing
     retro -->|Proceed| newsession
+    retro -.->|architectural commitment| adr
     sizing --> newsession
+    adr --> newsession
     newsession --> proceed
     retro -->|Pivot| pivot
     retro -->|Abandon| abandon
@@ -585,6 +690,7 @@ graph TD
     techsel[technology-selector<br/>optional: choosing between named options]:::optional
     researcher[api-researcher<br/>Research behavior, constraints,<br/>version differences, gotchas]:::research
     decision{Findings}:::decision
+    adr[adr-writer<br/>optional: significant adoption decision]:::optional
     p3([Pipeline 3 — Feature build<br/>Carry findings into task-planner]):::toP3
     p1([Pipeline 1 — Spike/POC<br/>Hands-on validation needed]):::toP1
     p0([Pipeline 0 — Requirements<br/>Rethink design approach]):::toP0
@@ -594,6 +700,8 @@ graph TD
     start --> researcher
     researcher --> decision
     decision -->|clear and viable| p3
+    decision -.->|architectural commitment| adr
+    adr --> p3
     decision -->|unknown behavior<br/>needs proof-of-concept| p1
     decision -->|fundamentally incompatible| p0
 ```
@@ -611,14 +719,18 @@ graph TD
     classDef testing fill:#D5E8D4,stroke:#555
     classDef review fill:#DAE8FC,stroke:#555
     classDef feedback fill:#F8CECC,stroke:#555
+    classDef audit fill:#FFF2CC,stroke:#D6B656
+    classDef contract fill:#D5E8F0,stroke:#4A90A4
 
     start([New Feature Request]):::startEnd
     scope[scope-estimator<br/>optional: if scope unclear]:::optional
     worktree[using-git-worktrees<br/>optional: isolate on branch]:::optional
     plan[task-planner<br/>Define done criteria, steps, risks]:::planning
+    iface[interface-designer<br/>optional: public API or shared boundary]:::contract
     mapper[context-mapper<br/>optional: shared module / large codebase]:::optional
     impl[feature-implementer<br/>Minimal diff — one step at a time]:::impl
     test[test-engineer<br/>Write tests before merge]:::testing
+    dep_audit[dependency-auditor<br/>optional: if packages added or changed]:::audit
     review[code-reviewer<br/>Correctness, regressions, standards]:::review
     rcr[receiving-code-review<br/>if reviewer returns feedback]:::feedback
     accept[acceptance-checker<br/>Map evidence to criteria]:::testing
@@ -630,13 +742,20 @@ graph TD
     start --> plan
     scope --> plan
     worktree --> plan
+    plan -.-> iface
+    iface -.-> mapper
+    iface --> impl
     plan -.-> mapper
     mapper --> impl
     plan --> impl
     impl --> test
+    test -.-> dep_audit
+    dep_audit --> review
     test --> review
     review -.->|has feedback| rcr
     rcr -.->|fix → re-test → re-review| impl
+    review -.->|contract incorrect| iface
+    accept -.->|contract incorrect| iface
     review -->|no blocking issues| accept
     accept -.->|missing implementation| impl
     accept -.->|missing coverage| test
@@ -660,14 +779,18 @@ graph TD
     classDef review fill:#DAE8FC,stroke:#555
     classDef feedback fill:#F8CECC,stroke:#555
     classDef done fill:#E8F4FD,stroke:#555
+    classDef audit fill:#FFF2CC,stroke:#D6B656
+    classDef contract fill:#D5E8F0,stroke:#4A90A4
 
     start([Bug Report / Stack Trace<br/>Runtime Failure]):::startEnd
     parallel[dispatching-parallel-agents<br/>optional: 3+ independent failures]:::optional
     triage[bug-repro-triager<br/>Reproduce, hypothesize, plan]:::triage
+    iface[interface-designer<br/>optional: contract itself is incorrect]:::contract
     mapper[context-mapper<br/>optional: shared module / large codebase]:::optional
     worktree[using-git-worktrees<br/>optional: isolate fix on branch]:::optional
     test[test-engineer<br/>Write FAILING regression test first]:::testing
     impl[feature-implementer<br/>Minimal fix only]:::impl
+    dep_audit[dependency-auditor<br/>optional: if packages added or changed]:::audit
     review[code-reviewer<br/>Correctness, regressions, standards]:::review
     rcr[receiving-code-review<br/>if reviewer returns feedback]:::feedback
     accept[acceptance-checker<br/>Confirm regression closed]:::testing
@@ -677,11 +800,15 @@ graph TD
     start -.->|3+ independent failures| parallel
     start --> triage
     parallel --> triage
+    triage -.->|contract incorrect| iface
     triage -.-> mapper & worktree
+    iface --> test
     mapper --> test
     worktree --> test
     triage --> test
     test --> impl
+    impl -.-> dep_audit
+    dep_audit --> review
     impl --> review
     review -.->|has feedback| rcr
     rcr -.->|fix → re-test → re-review| impl
@@ -698,7 +825,7 @@ graph TD
 
 ```mermaid
 graph TD
-    classDef startEnd fill:#E1D5E7,stroke:#555
+    classDef startEnd fill:#E8F4FD,stroke:#555
     classDef optional fill:#E1D5E7,stroke:#555
     classDef planning fill:#FFF2CC,stroke:#555
     classDef simplify fill:#E1D5E7,stroke:#555
@@ -706,6 +833,7 @@ graph TD
     classDef review fill:#DAE8FC,stroke:#555
     classDef feedback fill:#F8CECC,stroke:#555
     classDef done fill:#E8F4FD,stroke:#555
+    classDef contract fill:#D5E8F0,stroke:#4A90A4
 
     start([Refactor / Cleanup Request]):::startEnd
     worktree[using-git-worktrees<br/>optional: isolate on branch]:::optional
@@ -716,6 +844,7 @@ graph TD
     review[code-reviewer<br/>Verify no regressions]:::review
     rcr[receiving-code-review<br/>if reviewer returns feedback]:::feedback
     accept[acceptance-checker<br/>Confirm behavior preserved]:::testing
+    iface[interface-designer<br/>optional: public surface changed]:::contract
     finish[finishing-a-development-branch]:::optional
     done([Done]):::done
 
@@ -733,7 +862,9 @@ graph TD
     review -->|no blocking issues| accept
     accept -.->|altered behavior| simplify
     accept -.->|insufficient coverage| pretest
+    accept -.->|surface changed| iface
     accept -->|behavior preserved| finish
+    iface --> finish
     finish --> done
 ```
 
@@ -756,10 +887,10 @@ graph TD
     worktree[using-git-worktrees<br/>optional: isolate on branch]:::optional
     mapper[context-mapper<br/>optional: large codebase]:::optional
     engineer[test-engineer<br/>Write / update tests<br/>No production code changes]:::testing
-    accept[acceptance-checker<br/>optional: formal criteria]:::testing
     review[code-reviewer<br/>Required for shared test infrastructure]:::review
     rcr[receiving-code-review<br/>if reviewer returns feedback]:::feedback
-    decision{Coverage gaps remaining?}:::decision
+    decision{Coverage goals met?}:::decision
+    accept[acceptance-checker<br/>optional: formal criteria]:::testing
     escalate([Pipeline 3 or 4<br/>production change needed]):::escalate
     finish[finishing-a-development-branch]:::optional
     done([Done]):::done
@@ -768,15 +899,16 @@ graph TD
     worktree --> engineer
     mapper --> engineer
     start --> engineer
-    engineer -.->|formal criteria| accept
     engineer --> review
-    accept --> review
     review -.->|has feedback| rcr
     rcr -.->|fix → re-review| engineer
     review -->|no blocking issues| decision
     decision -->|gaps remain| engineer
     decision -->|production change needed| escalate
+    decision -.->|formal criteria| accept
     decision -->|all goals met| finish
+    accept -->|criteria met| finish
+    accept -.->|criteria gap| engineer
     finish --> done
 ```
 
@@ -802,7 +934,7 @@ graph TD
     accept[acceptance-checker<br/>optional: formal criteria]:::testing
     tests[test-engineer<br/>optional: coverage gaps surfaced]:::testing
     rcr[receiving-code-review<br/>if reviewer returns feedback]:::feedback
-    escalate([Pipeline 3 or 4 — implement to close gaps<br/>then return for final review]):::escalate
+    escalate([Pipeline 3 or 4 — apply fixes<br/>then return to Pipeline 7 for confirmation review]):::escalate
     finish[finishing-a-development-branch]:::optional
     done([Done]):::done
 
@@ -814,9 +946,10 @@ graph TD
     review -.->|formal criteria| accept
     review -.->|coverage gaps found| tests
     review -.->|has feedback| rcr
-    rcr -.->|fix → re-review| review
+    rcr --> escalate
+    tests --> review
     accept -.->|unmet criteria| escalate
-    tests -.-> finish
+    accept -->|criteria met| finish
     review -->|no blocking issues / all criteria met| finish
     finish --> done
 ```
@@ -848,6 +981,91 @@ graph TD
     rcr -.->|fix → re-review| updater
     review -->|no blocking issues| finish
     finish --> done
+```
+
+---
+
+### Pipeline 9 — Performance / Optimization
+
+```mermaid
+graph TD
+    classDef startEnd fill:#FFD6E7,stroke:#555
+    classDef profiler fill:#FFD6E7,stroke:#555
+    classDef optional fill:#E1D5E7,stroke:#555
+    classDef impl fill:#FFE6CC,stroke:#555
+    classDef testing fill:#D5E8D4,stroke:#555
+    classDef review fill:#DAE8FC,stroke:#555
+    classDef feedback fill:#F8CECC,stroke:#555
+    classDef done fill:#E8F4FD,stroke:#555
+
+    start([Performance Concern<br/>Slow Feature / Regression / Target]):::startEnd
+    worktree[using-git-worktrees<br/>optional: isolate on branch]:::optional
+    profiler[performance-profiler<br/>Establish baseline — identify hotspot<br/>Define acceptance criteria]:::profiler
+    mapper[context-mapper<br/>optional: shared module hotspot]:::optional
+    impl[feature-implementer<br/>One targeted optimization at a time]:::impl
+    test[test-engineer<br/>Write failing benchmark<br/>codifying the acceptance criteria]:::testing
+    review[code-reviewer<br/>Correctness, regressions, standards]:::review
+    rcr[receiving-code-review<br/>if reviewer returns feedback]:::feedback
+    accept[acceptance-checker<br/>Validate before/after metrics<br/>against profiler criteria]:::testing
+    docs[docs-updater<br/>optional: if SLAs or benchmarks documented]:::feedback
+    finish[finishing-a-development-branch]:::optional
+    done([Done]):::done
+
+    start -.-> worktree
+    start --> profiler
+    worktree --> profiler
+    profiler -.-> mapper
+    mapper --> test
+    profiler --> test
+    test --> impl
+    impl --> review
+    review -.->|has feedback| rcr
+    rcr -.->|fix → re-test → re-review| impl
+    review -->|no blocking issues| accept
+    accept -.->|target not met → optimize → re-benchmark → re-review| impl
+    accept -.->|regression → revert → re-benchmark → re-review| impl
+    accept -.->|optional| docs
+    accept -->|targets met, no regressions| finish
+    docs --> finish
+    finish --> done
+```
+
+---
+
+### Pipeline 10 — Security Audit
+
+```mermaid
+graph TD
+    classDef startEnd fill:#F4CCCC,stroke:#555
+    classDef threat fill:#F4CCCC,stroke:#555
+    classDef audit fill:#FCE5CD,stroke:#555
+    classDef review fill:#EAD1DC,stroke:#555
+    classDef optional fill:#E1D5E7,stroke:#555
+    classDef fix fill:#FFE6CC,stroke:#555
+    classDef done fill:#E8F4FD,stroke:#555
+
+    start([Security Audit Requested<br/>or Change Introduces Security Surface]):::startEnd
+    worktree[using-git-worktrees<br/>optional: if remediation expected]:::optional
+    tm[threat-modeler<br/>Map attack surface<br/>Produce threat checklist]:::threat
+    da[dependency-auditor<br/>Run npm / pip / cargo audit<br/>Flag CVEs + license issues]:::audit
+    fb[find-bugs<br/>Code security review<br/>Using threat checklist as context]:::review
+    p4[Pipeline 4 — Bug Fix<br/>optional: for confirmed vulnerabilities]:::fix
+    dep_rerun[dependency-auditor re-run<br/>after upgrades applied]:::audit
+    docs[docs-updater<br/>optional: record decisions / clean audit]:::optional
+    done([Done]):::done
+
+    start -.-> worktree
+    start --> tm
+    worktree --> tm
+    tm --> da
+    da --> fb
+    fb -.->|vulnerability confirmed| p4
+    fb -.->|dep upgrade needed| dep_rerun
+    fb -.->|optional: record audit| docs
+    fb -->|no actionable issues| done
+    dep_rerun --> fb
+    p4 --> done
+    docs --> done
 ```
 
 ---
@@ -1002,19 +1220,247 @@ Current agent: docs-updater
 
 ---
 
-### Example 10: "Three test files are failing in unrelated subsystems"
+### Example 10: "The checkout flow is too slow — can you optimize it?"
+
+A performance concern with no confirmed root cause yet.
+
+**What Devflow does:**
+
+```
+Selected worker agents: performance-profiler → test-engineer → feature-implementer → code-reviewer → acceptance-checker
+Reason: performance optimization — profile first, write failing benchmark to codify criteria, then optimize (pipeline 9)
+Current agent: performance-profiler
+```
+
+`performance-profiler` runs profiling against the checkout flow, captures baseline metrics (e.g., p95 latency: 2,100ms), and identifies the actual hotspot — not the assumed one. In this case, the profiler discovers an N+1 query in the cart loading logic, not the payment gateway call that was suspected. It defines the acceptance criteria: "p95 latency ≤ 300ms under the same load conditions." `test-engineer` writes a failing benchmark test that codifies those criteria in executable form — the test asserts p95 ≤ 300ms and fails immediately against the unoptimized baseline, establishing a concrete RED state before any production code changes. `feature-implementer` targets the N+1 query specifically, implementing the fix until the benchmark turns GREEN. `acceptance-checker` validates the before/after numbers against the profiler's criteria.
+
+**Critical discipline enforced:** No code is changed until the hotspot is confirmed by measurement. The suspected bottleneck is never assumed to be the real one.
+
+---
+
+### Example 11: "Three test files are failing in unrelated subsystems"
 
 Multiple independent failures — parallel dispatch.
 
 **What Devflow does:**
 
 ```
-Selected worker agents: dispatching-parallel-agents → bug-repro-triager (×3) → test-engineer → feature-implementer → code-reviewer
+Selected worker agents: dispatching-parallel-agents → bug-repro-triager (×3) → test-engineer → feature-implementer → code-reviewer → acceptance-checker
 Reason: 3 independent failures in different subsystems — parallel dispatch saves time (pipeline 4 + parallel variant)
 Current agent: dispatching-parallel-agents
 ```
 
-One `bug-repro-triager` per failure domain runs simultaneously instead of sequentially. Fixes are reviewed for conflicts before integration.
+`dispatching-parallel-agents` splits the three failures into independent tracks: one `bug-repro-triager` per domain runs simultaneously instead of sequentially — one for the auth subsystem, one for the payment queue, one for the notification service. Each produces its own reproduction steps and root-cause hypothesis without waiting for the others.
+
+Once all three triagers complete, `test-engineer` writes a failing regression test for each confirmed failure — three separate tests, one per domain, each pinning the exact broken behavior before any fix is applied. `feature-implementer` then applies three minimal, targeted fixes. Before integrating them, the fixes are reviewed together for conflicts (e.g. a shared utility changed by two independent fixes). `code-reviewer` evaluates correctness, regression risk, and whether the fixes interact. `acceptance-checker` confirms all three regressions are closed and no new failures were introduced.
+
+**Critical discipline enforced:** The three failures are investigated in parallel but converge at a single review and acceptance gate — not three separate merges that skip cross-fix conflict review.
+
+---
+
+### Example 12: "We're about to ship the new payment flow — run a security audit"
+
+A pre-release security gate on a change that introduces auth, external calls, and sensitive data handling.
+
+**What Devflow does:**
+
+```
+Selected worker agents: threat-modeler → dependency-auditor → find-bugs
+Reason: pre-release security gate on a change introducing auth paths, external API calls, and PII handling (pipeline 10)
+Current agent: threat-modeler
+```
+
+`threat-modeler` reads the diff, maps the attack surface (new `/checkout` endpoint with user input, Stripe API call, PII stored to database), and produces a threat checklist with 4 applicable threats ranked: IDOR on order IDs (High), missing CSRF on the checkout form (High), secrets in error logs (Medium), and rate-limiting gap (Low). `dependency-auditor` runs `npm audit` and finds one High-severity CVE in a transitive dependency of the Stripe SDK — a fix version exists. `find-bugs` uses both reports as context: it confirms the IDOR by tracing the order lookup, confirms the CSRF gap, and flags two call sites that could log the API key.
+
+**Critical discipline enforced:** Security review is separate from the functional code review (Pipeline 7) that ran on this same change. Security findings exit to Pipeline 4 — `find-bugs` reports, not fixes. The dependency CVE gets its own upgrade commit, then `dependency-auditor` re-runs to confirm clean before closing the audit.
+
+---
+
+### Example 13: "We need to decide between PostgreSQL and MongoDB for the new service"
+
+A technology choice between named alternatives before any implementation plan is written.
+
+**What Devflow does:**
+
+```
+Selected worker agents: technology-selector → adr-writer → writing-plans
+Reason: technology choice between named alternatives with architectural consequences — decision must be documented before planning begins (pipeline 0 + adr-writer variant)
+Current agent: technology-selector
+```
+
+`technology-selector` evaluates PostgreSQL vs MongoDB against the stated requirements (strong consistency needed, relational data model, team SQL experience) and produces a structured recommendation: PostgreSQL, with reasoning and the conditions that would change it. `adr-writer` immediately follows — it reads the recommendation from context and writes `docs/decisions/0001-use-postgresql-for-order-service.md`, recording the decision, both options, the rationale, the trade-offs accepted (schema migration overhead), and the conditions for revisiting (if the data model becomes document-shaped or horizontal scale requirements change). `writing-plans` then opens with the ADR already committed — the plan references it rather than re-arguing the choice.
+
+**Critical discipline enforced:** The decision is recorded *before* implementation begins — not reconstructed after the fact. Three months later, when someone asks "why PostgreSQL?", the answer is in the repository with full context, not lost in a chat history or a team member's memory.
+
+---
+
+### Example 14: "Add the Stripe package and implement payment processing"
+
+A new feature that introduces an external dependency — the dependency-auditor Variant in Pipeline 3.
+
+**What Devflow does:**
+
+```
+Selected worker agents: task-planner → feature-implementer → test-engineer → dependency-auditor → code-reviewer → acceptance-checker
+Reason: new feature that introduces an external package — audit newly added dependencies before code review (pipeline 3 + dependency-auditor variant)
+Current agent: task-planner
+```
+
+`task-planner` produces an implementation plan with Stripe integration steps, done criteria, and risks. `feature-implementer` adds the `stripe` package to `package.json` and implements the payment processing logic. `test-engineer` writes integration tests, potentially adding `stripe-mock` as a dev dependency. `dependency-auditor` now activates — it detects two manifest changes (`package.json` with `stripe` added, dev dependency `stripe-mock` added) and runs `npm audit`. It reports: no CVEs on `stripe` at the pinned version; `stripe-mock` has one Low advisory (no fix needed); license is MIT for both — no conflict. Handoff to `code-reviewer`: "no blocking findings — proceed; note the Low advisory on stripe-mock is acknowledged". `code-reviewer` and `acceptance-checker` complete normally.
+
+If instead `npm audit` had returned a High CVE on a transitive dependency of `stripe`, `dependency-auditor` would report: "**Recommend escalating to Pipeline 10 before merging** — `axios@1.2.0` (transitive via `stripe`) has CVE-YYYY-NNNN, CVSS 7.5, fixed in `axios@1.4.0`". The team decides: either upgrade the pin and re-run, or proceed to Pipeline 10 for a full threat model before the PR is merged.
+
+**Critical discipline enforced:** Third-party risk is caught at the point of introduction — not discovered weeks later in a periodic audit or, worse, post-incident.
+
+---
+
+### Example 15: "Add a user search endpoint to the REST API"
+
+A new public REST endpoint consumed by a frontend client — the interface-designer Variant in Pipeline 3.
+
+**What Devflow does:**
+
+```
+Selected worker agents: task-planner → interface-designer → feature-implementer → test-engineer → code-reviewer → acceptance-checker
+Reason: new REST endpoint with external consumers — define the contract before implementation so caller and implementer agree on the shape before any code is written (pipeline 3 + interface-designer variant)
+Current agent: task-planner
+```
+
+`task-planner` produces a plan: add `GET /users/search?q=<query>` with pagination, returning a list of matching users. `interface-designer` activates — it reads the plan, finds `openapi.yaml` in the project root, detects REST context, and produces an updated OpenAPI 3.x YAML saved to `docs/interfaces/users-api.yaml`. The spec defines the `q` query parameter (required, min 2 chars), the `page` and `limit` parameters, the `UserSummary` response schema (id, name, email, avatarUrl), and three error responses: `400 Bad Request` (query too short), `401 Unauthorized` (unauthenticated), `500 Internal Server Error`. It also notes: "BREAKING CHANGE: none — this is a new endpoint with no existing callers."
+
+`feature-implementer` receives the handoff: "implement against `docs/interfaces/users-api.yaml` exactly — any added field, changed type, or removed error case requires updating the contract first." The backend engineer implements the search endpoint, the full-text query, and the pagination logic. `test-engineer` derives contract tests from the spec — one test per documented error case, plus a happy-path test verifying the response schema matches. `code-reviewer` checks that the implementation response shape matches the OpenAPI schema exactly.
+
+**Critical discipline enforced:** The frontend team can begin mocking the API against the OpenAPI spec the moment `interface-designer` finishes — before `feature-implementer` writes a single line. No integration surprise at PR time.
+
+**TDD-first variant:** When the project follows strict TDD, the pipeline reorders to `task-planner → interface-designer → test-engineer → feature-implementer → code-reviewer → acceptance-checker`. `test-engineer` writes all contract compliance tests in RED phase — one per endpoint, one per documented error case — before `feature-implementer` writes a single line. The contract provides complete test specifications immediately, making test-first fully practical. `feature-implementer` then implements to GREEN against the already-written tests.
+
+---
+
+### Example 16: "We ran out of time — let's pick this up tomorrow"
+
+A multi-session scenario: a bug fix is partially done at the end of one working session and must resume cleanly the next day. This example shows `session-continuity` in both write mode (end of session) and read mode (start of next session).
+
+> **Important:** `session-continuity` is always invoked **manually** by the user as a slash command (`/session-continuity`). It is a skill, not a routed agent — the router never dispatches it automatically. The instruction "Use devflow:session-continuity at session boundaries" that appears in every pipeline's Notes is a reminder to the **human** to remember to invoke it at the right moment. See also Section 11 (Limitations): *"It does not manage long context automatically. For very long sessions, use session-continuity manually at session boundaries to preserve state."*
+
+#### End of Session — Write Mode
+
+The team has been working on Pipeline 4 (Bug fix). `bug-repro-triager` confirmed the root cause, `test-engineer` wrote a failing regression test, and `feature-implementer` is mid-fix — one file changed, one still to go. The session must close.
+
+The developer invokes the skill directly — no routing step, no agent selection:
+
+```
+You: /session-continuity
+```
+
+`session-continuity` activates in write mode, reads the current session context, and produces a snapshot file at `docs/sessions/2026-05-01-14-30-auth-token-bug.md`:
+
+```markdown
+# Session Snapshot: Auth token expiry bug fix
+
+**Date:** 2026-05-01
+**Status:** In Progress
+**Next action:** Open `src/auth/token-validator.ts` and apply the same
+null-guard fix as in `src/auth/session-handler.ts` — the root cause
+is an unguarded `user.token.expiresAt` access when the token object
+is present but its `expiresAt` field is null (populated lazily by the
+legacy API).
+
+## Goal
+
+Fix the NullReferenceError crash in the auth token validation path that
+affects users logging in via legacy SSO providers.
+
+## Current State
+
+Regression test is written and failing (RED confirmed).
+Fix applied to `src/auth/session-handler.ts` — tests now pass for that file.
+`src/auth/token-validator.ts` has the same pattern and needs the same fix.
+
+## Decisions Made
+
+| Decision | Reasoning | Alternatives Ruled Out |
+|---|---|---|
+| Null-guard at access site, not at ingestion | Legacy API contract cannot be changed; callers must be defensive | Fixing the API to always populate expiresAt — would require coordinating with the legacy team and a separate release |
+| One fix per file, not a shared utility | The pattern is simple enough that a utility adds abstraction without payoff | Extracted helper — rejected; adds indirection for a one-liner |
+
+## Work Completed
+
+- [x] Root cause confirmed: `user.token.expiresAt` is null for legacy SSO tokens
+- [x] Regression test written: `auth/token-expiry.test.ts` line 44 — fails correctly
+- [x] Fix applied to `src/auth/session-handler.ts`
+
+## Work Remaining
+
+- [ ] Apply same null-guard fix to `src/auth/token-validator.ts`
+- [ ] Run full test suite to confirm no regressions
+- [ ] `code-reviewer` pass
+- [ ] `acceptance-checker` pass
+
+## Open Questions
+
+None — root cause is confirmed, fix approach is decided.
+
+## Context for Resumption
+
+- Read `src/auth/session-handler.ts` lines 78–85 to see the fix pattern before touching `token-validator.ts`
+- The regression test is in `src/auth/__tests__/token-expiry.test.ts`
+- Do NOT touch `src/auth/token-ingestion.ts` — the root cause is in the validation path, not ingestion
+- Branch: `fix/auth-token-null-expiry` — one commit already on this branch
+
+## Related Artifacts
+
+| Type | Location | Notes |
+|---|---|---|
+| Bug repro | `docs/sessions/2026-05-01-14-30-auth-token-bug.md` | This file |
+| Regression test | `src/auth/__tests__/token-expiry.test.ts` | Written in RED state |
+```
+
+---
+
+#### Start of Next Session — Read Mode
+
+The next day, a new Claude Code session opens on the same project. Before invoking the router or doing any development work, the developer invokes the skill directly:
+
+```
+You: /session-continuity
+```
+
+`session-continuity` activates in read mode — it scans `docs/sessions/`, finds `2026-05-01-14-30-auth-token-bug.md`, and outputs an orientation before any work begins:
+
+```
+Session snapshot found: Auth token expiry bug fix (2026-05-01)
+
+Goal:     Fix NullReferenceError crash in auth token validation path (legacy SSO users)
+Status:   In Progress
+Branch:   fix/auth-token-null-expiry — verified, one commit present ✓
+Test:     src/auth/__tests__/token-expiry.test.ts — verified, failing correctly ✓
+
+Next action: Apply null-guard fix to src/auth/token-validator.ts (same pattern
+as session-handler.ts lines 78–85 — read that first)
+
+Blockers: None
+
+Do not touch: src/auth/token-ingestion.ts (root cause is in validation, not ingestion)
+
+Ready to continue. Confirm or update before proceeding?
+```
+
+The team confirms. Work resumes from the exact stopping point — no re-reading of files to rediscover context, no relitigating the null-guard decision, no wondering which files are already fixed.
+
+**Routing continues as if the session never ended:**
+
+```
+Selected worker agents: feature-implementer → code-reviewer → acceptance-checker
+Reason: bug fix in progress — repro confirmed, test written, fix partially applied;
+resuming at feature-implementer (pipeline 4, mid-pipeline resume)
+Current agent: feature-implementer
+```
+
+---
+
+**Critical discipline enforced:** The "Decisions Made" section is what makes the snapshot valuable. Without it, the next session re-opens the question of whether to fix the API ingestion path or the validation path — spending 15 minutes rediscovering a decision that was already made with reasoning. The snapshot is written while context is active, not reconstructed from memory after the session closes.
+
+**When to invoke:** Any pipeline that spans more than one session — P0 (requirements evolve over days), P1 (spikes that need multiple experiment rounds), P4 (bugs with unclear root cause), P9 (performance work with profiling runs spread across sessions). Every pipeline's Notes section contains the reminder "Use devflow:session-continuity at session boundaries" — this is a prompt to the human, not an automated trigger. The human must type `/session-continuity` at each boundary.
 
 ---
 
@@ -1073,7 +1519,7 @@ This scopes Devflow to that project without affecting global behavior.
 
 ## 9. Installation — Other AI Tools
 
-Devflow's pipeline discipline and worker roles are model-agnostic. The routing logic, structured output formats, and nine-pipeline structure all transfer to any AI coding assistant. What differs is how each tool loads instructions and whether it supports automatic agent dispatch.
+Devflow's pipeline discipline and worker roles are model-agnostic. The routing logic, structured output formats, and eleven-pipeline structure all transfer to any AI coding assistant. What differs is how each tool loads instructions and whether it supports automatic agent dispatch.
 
 ### What Transfers and What Doesn't
 
@@ -1314,7 +1760,7 @@ After creating the agent, add it to `using-devflow/SKILL.md`:
 
 **It does not guarantee output quality.** Devflow enforces the right sequence of steps and the right worker for each step. It cannot guarantee that a `feature-implementer` writes good code, only that it follows the defined scope and stays in role.
 
-**It does not cover all task types.** The nine pipelines cover common software development scenarios. Highly specialized tasks (hardware integration, data science pipelines, legal document review) may not map cleanly to any pipeline. Use the closest matching pipeline or route to `none` and proceed normally.
+**It does not cover all task types.** The eleven pipelines cover common software development scenarios. Highly specialized tasks (hardware integration, data science pipelines, legal document review) may not map cleanly to any pipeline. Use the closest matching pipeline or route to `none` and proceed normally.
 
 **It does not replace human review.** Devflow's `code-reviewer` and `acceptance-checker` agents are useful checks, but they are not a substitute for human judgment on critical changes.
 
@@ -1347,6 +1793,8 @@ After creating the agent, add it to `using-devflow/SKILL.md`:
 | "Add tests for X" / "Coverage is too low" | 6 — Test-only |
 | "Review this" / "Check this diff" | 7 — Review-only |
 | "Update the README" / "Write changelog entry" | 8 — Docs-only |
+| "This is too slow" / "Optimize X" / "Performance regression" | 9 — Performance |
+| "Security audit" / "Pre-release security gate" / "New auth or external call" | 10 — Security |
 
 ### Routing Announcement Format
 
@@ -1380,6 +1828,9 @@ Before claiming a task is complete:
 - [ ] Did `acceptance-checker` map evidence to stated criteria?
 - [ ] Was `poc-retrospective` written before closing any spike?
 - [ ] Was `session-continuity` used at session boundaries for long work?
+- [ ] Was `threat-modeler` run before `find-bugs` for security-sensitive changes?
+- [ ] Did `find-bugs` report findings only — not fix them inline?
+- [ ] If `interface-designer` ran, was the contract in `docs/interfaces/` checked by `test-engineer` (before writing tests), `code-reviewer` (before approving), and `acceptance-checker` (before marking done)?
 
 ### Key Rules Summary
 
@@ -1393,4 +1844,7 @@ Before claiming a task is complete:
 | New session after spike Proceed | Spike-mode thinking contaminates production planning |
 | One worker at a time | Mixed roles produce muddled outputs |
 | Minimal diff | Broader scope = harder review = more bugs |
+| Threat-model before security review | Generic checklists miss change-specific attack surface |
+| Security audit finds, not fixes | Mixing audit and remediation in one pipeline loses traceability |
+| Document decisions before implementing | Decisions recorded after the fact omit the alternatives seriously considered |
 | Context map before scanning | Avoids redundant codebase sweeps in large projects |

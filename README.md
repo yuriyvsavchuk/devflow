@@ -20,6 +20,7 @@ Reusable process guides that Claude Code invokes via slash commands. Each skill 
 | `systematic-debugging` | Root-cause analysis before proposing fixes |
 | `brainstorming` | Explores intent, requirements, and design before implementation |
 | `interview` | Structured requirements extraction through one-at-a-time questioning |
+| `adr-writer` | Documents significant architectural decisions in `docs/decisions/` before implementation begins |
 | `writing-skills` | TDD-based approach to creating and testing new skills |
 | `find-bugs` | Security and code quality audit of local branch changes |
 | `code-simplifier` | Orchestrates code cleanup for clarity and consistency while preserving behavior |
@@ -56,12 +57,16 @@ Worker agent definitions that pipelines route tasks to. Each agent has a focused
 | `spike-investigator` | Hands-on experimentation agent that validates a hypothesis in throwaway mode | Sonnet |
 | `technology-selector` | Evaluates technology/library options and produces a single recommendation with trade-offs | Opus |
 | `scope-estimator` | Rough effort/complexity sizing per work area before writing a full implementation plan | Sonnet |
+| `performance-profiler` | Establishes baselines, identifies hotspots through profiling, defines measurable acceptance criteria before optimization | Sonnet |
+| `threat-modeler` | Maps attack surface for a change (inputs, auth paths, trust boundaries, data flows) and produces a threat checklist for security review | Sonnet |
+| `dependency-auditor` | Runs ecosystem-native scanners (npm/pip/cargo audit), flags CVEs, license issues, and outdated pins | Sonnet |
+| `interface-designer` | Defines interface contracts (OpenAPI 3.x specs, TypeScript interfaces, AsyncAPI schemas) before implementation begins | Sonnet |
 
 **Model tiers:** Opus for high-stakes reasoning (planning, architecture decisions); Haiku for mechanical tasks (dependency mapping, doc sync); Sonnet for everything in between.
 
 ## Pipelines
 
-`using-devflow` maps every task to one of nine named pipelines:
+`using-devflow` maps every task to one of eleven named pipelines:
 
 | # | Name | Default worker sequence |
 |---|------|------------------------|
@@ -74,6 +79,8 @@ Worker agent definitions that pipelines route tasks to. Each agent has a focused
 | 6 | Test-only | `test-engineer → code-reviewer` |
 | 7 | Review-only | `code-reviewer` |
 | 8 | Docs-only | `docs-updater` |
+| 9 | Performance / optimization | `performance-profiler → test-engineer → feature-implementer → code-reviewer → acceptance-checker` |
+| 10 | Security audit | `threat-modeler → dependency-auditor → find-bugs` |
 
 Each pipeline defines Variants (optional additions), Notes (discipline rules), and a Transition (what happens when the pipeline completes or loops back).
 
