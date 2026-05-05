@@ -613,7 +613,7 @@ At minimum, all worker outputs must include:
 
 ### Example: "We need to decide between PostgreSQL and MongoDB for the new service"
 - `Selected worker agents: technology-selector → adr-writer → writing-plans`
-- `Reason: technology choice between named alternatives with significant architectural consequences — decision must be documented before planning begins (pipeline 0 + adr-writer variant)`
+- `Reason: technology choice between named alternatives — requirements are already defined (new service, known data model), so devflow:interview and devflow:brainstorming are skipped; devflow:scope-estimator is skipped because the decision scopes the work, not the other way around; decision must be documented in an ADR before planning begins (pipeline 0, technology-selector + adr-writer variant — interview/brainstorming/scope-estimator skipped because scope and problem are already established)`
 - `Current agent: technology-selector`
 
 ### Example: "We're about to ship the new payment flow — run a security audit first"
@@ -629,6 +629,26 @@ At minimum, all worker outputs must include:
 ### Example: "Add the stripe package and implement payment processing"
 - `Selected worker agents: task-planner → feature-implementer → test-engineer → dependency-auditor → code-reviewer → acceptance-checker`
 - `Reason: new feature that introduces an external package — audit newly added dependencies before code review (pipeline 3 + dependency-auditor variant)`
+- `Current agent: task-planner`
+
+### Example: "What does the task-planner agent do?"
+- `Selected worker agents: none`
+- `Reason: no matching worker agent — this is a meta question about the framework itself, not a development task; answer directly`
+- `Current agent: none`
+
+### Example: "Three subsystems are failing independently — auth, payments, and notifications all have bugs"
+- `Selected worker agents: dispatching-parallel-agents`
+- `Reason: 3 or more independent failures across different subsystems with no shared state — investigate domains concurrently rather than sequentially (pipeline 4 + dispatching-parallel-agents variant)`
+- `Current agent: dispatching-parallel-agents`
+
+### Example: "The code reviewer returned blocking feedback on the auth feature"
+- `Selected worker agents: receiving-code-review → feature-implementer → code-reviewer → acceptance-checker`
+- `Reason: code-reviewer returned blocking feedback requiring fixes — process and apply findings before re-running the reviewer; pipeline resumes mid-flow after the fix pass (pipeline 3, receiving-code-review loop-back)`
+- `Current agent: receiving-code-review`
+
+### Example: "Continue the Stripe integration — the spike is done and we're ready to build"
+- `Selected worker agents: task-planner → feature-implementer → test-engineer → code-reviewer → acceptance-checker`
+- `Reason: resuming implementation after a completed research phase — devflow:task-planner must read the poc-retrospective from docs/spikes/ (if arriving from a spike) or the api-researcher findings from the prior session (if arriving from API research) before producing the plan (pipeline 3 — cross-pipeline resume)`
 - `Current agent: task-planner`
 
 ---
