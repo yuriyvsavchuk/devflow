@@ -211,13 +211,22 @@ Use these default pipelines unless there is a strong reason to change them. Pipe
 **Default pipeline:** `task-planner → feature-implementer → test-engineer → code-reviewer → acceptance-checker`
 
 **Variants:**
+- **TDD-first (preferred when acceptance criteria are clear):** `task-planner → interface-designer → test-engineer → feature-implementer → code-reviewer → acceptance-checker` — test-engineer runs after the interface contract exists but before any implementation, writing contract compliance tests (RED phase) that feature-implementer then satisfies (GREEN); this is the shift-left position and prevents requirement mismatches from being discovered after implementation cost is sunk; no separate post-implementation test-engineer pass is required when contract tests are comprehensive
 - Prepend devflow:scope-estimator when scope is unclear or the feature touches many areas of the codebase
 - Prepend devflow:using-git-worktrees before devflow:feature-implementer when the project uses git — creates an isolated worktree and feature branch before any code changes begin
 - Insert devflow:interface-designer after devflow:task-planner when the change introduces or modifies a public API endpoint, shared module exports, or service boundary — produces a binding interface contract (OpenAPI 3.x spec, TypeScript interfaces, or AsyncAPI schema) before devflow:feature-implementer begins; any deviation from the contract during implementation requires updating the contract first
-- Move devflow:test-engineer before devflow:feature-implementer when devflow:interface-designer has run and the project follows TDD — the contract provides complete behavioral specifications (all endpoints, parameters, and error cases) enabling test-first; test-engineer writes contract compliance tests (RED phase) before any production code is written; feature-implementer then implements to GREEN; this repositions the standard post-implementation devflow:test-engineer step — no separate post-implementation pass is needed when the contract tests are comprehensive
 - Insert devflow:context-mapper after devflow:task-planner (or after devflow:interface-designer when both are active) when the codebase is large or the change touches a shared module — traces reverse dependencies and test coverage from the plan's target files; downstream workers read the context map instead of scanning the codebase themselves
 - Append devflow:dependency-auditor after devflow:test-engineer when the implementation adds or modifies package manifests (package.json, requirements.txt, Cargo.toml, go.mod, Gemfile, etc.) — run before devflow:code-reviewer so audit findings are available as review context; if dependency-auditor reports Critical or High findings, escalate to Pipeline 10 before merging
 - Append devflow:docs-updater when public behavior, API, configuration, or migration notes change
+
+Standard ordering (feature-implementer before test-engineer) is acceptable when:
+- The feature is exploratory and requirements will crystallize through implementation
+- A spike or POC was just completed and behavior is already known
+
+TDD-first is preferred when:
+- Acceptance criteria are clear and stable before implementation begins
+- An interface contract exists (or will be authored by devflow:interface-designer)
+- The team wants to catch requirement mismatches before implementation cost is sunk
 
 **Notes:**
 - devflow:task-planner defines done criteria before devflow:feature-implementer starts
