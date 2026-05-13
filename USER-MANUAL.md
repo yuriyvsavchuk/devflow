@@ -371,13 +371,22 @@ task-planner → feature-implementer → test-engineer → code-reviewer → acc
 - If arriving from Pipeline 2 and `task-planner` finds the research findings incomplete for a critical edge case, return to Pipeline 2 for a second research pass before continuing
 
 **Useful variants:**
+- **TDD-first (preferred when acceptance criteria are clear):** `task-planner → interface-designer → test-engineer → feature-implementer → code-reviewer → acceptance-checker` — `test-engineer` runs after the interface contract exists but before any implementation, writing contract compliance tests (RED phase) that `feature-implementer` then satisfies (GREEN); this is the shift-left position and prevents requirement mismatches from being discovered after implementation cost is sunk; no separate post-implementation `test-engineer` pass is required when contract tests are comprehensive
 - Prepend `scope-estimator` when scope is unclear or the feature touches many areas
 - Prepend `using-git-worktrees` before `feature-implementer` to isolate work on a feature branch
 - Insert `interface-designer` after `task-planner` when the change introduces or modifies a public API endpoint, shared module exports, or service boundary — produces a binding contract (OpenAPI 3.x spec, TypeScript interfaces, or AsyncAPI schema) in `docs/interfaces/` before `feature-implementer` begins; any deviation from the contract requires updating it first
-- Move `test-engineer` before `feature-implementer` when `interface-designer` has run and the project follows TDD — the contract provides complete behavioral specifications (all endpoints, parameters, and error cases), enabling test-first; `test-engineer` writes contract compliance tests (RED) before any production code is written; `feature-implementer` then implements to GREEN
 - Insert `context-mapper` after `task-planner` (or after `interface-designer` when both are active) when the codebase is large or the change touches a shared module — maps reverse dependencies and existing test coverage so downstream workers don't scan the full codebase
 - Append `dependency-auditor` after `test-engineer` when the implementation adds or modifies package manifests (package.json, requirements.txt, Cargo.toml, go.mod, Gemfile, etc.) — surfaces CVE exposure, license conflicts, and outdated pins from newly introduced packages before the code reviewer sees the diff; if Critical or High findings are reported, escalate to Pipeline 10 before merging
 - Append `docs-updater` when public behavior, API, configuration, or migration notes change
+
+Standard ordering (`feature-implementer` before `test-engineer`) is acceptable when:
+- The feature is exploratory and requirements will crystallize through implementation
+- A spike or POC was just completed and behavior is already known
+
+TDD-first is preferred when:
+- Acceptance criteria are clear and stable before implementation begins
+- An interface contract exists (or will be authored by `interface-designer`)
+- The team wants to catch requirement mismatches before implementation cost is sunk
 
 **Exit transitions:**
 - `code-reviewer` returns feedback → `receiving-code-review`, then re-run `code-reviewer`, then proceed to `acceptance-checker`
@@ -1332,7 +1341,7 @@ Current agent: task-planner
 
 **Critical discipline enforced:** The frontend team can begin mocking the API against the OpenAPI spec the moment `interface-designer` finishes — before `feature-implementer` writes a single line. No integration surprise at PR time.
 
-**TDD-first variant:** When the project follows strict TDD, the pipeline reorders to `task-planner → interface-designer → test-engineer → feature-implementer → code-reviewer → acceptance-checker`. `test-engineer` writes all contract compliance tests in RED phase — one per endpoint, one per documented error case — before `feature-implementer` writes a single line. The contract provides complete test specifications immediately, making test-first fully practical. `feature-implementer` then implements to GREEN against the already-written tests.
+**TDD-first variant (preferred when acceptance criteria are clear):** The pipeline reorders to `task-planner → interface-designer → test-engineer → feature-implementer → code-reviewer → acceptance-checker`. `test-engineer` writes all contract compliance tests in RED phase — one per endpoint, one per documented error case — before `feature-implementer` writes a single line. The contract provides complete test specifications immediately, making test-first fully practical. `feature-implementer` then implements to GREEN against the already-written tests.
 
 ---
 

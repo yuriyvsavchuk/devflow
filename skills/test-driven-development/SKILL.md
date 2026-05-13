@@ -378,3 +378,16 @@ No exceptions without your human partner's permission.
 - **Used within:** devflow:systematic-debugging — phase 4 requires a failing test before any fix is applied
 - **Agent:** devflow:test-engineer — dispatched in pipelines to write tests following the TDD cycle
 - **Documentation TDD:** devflow:writing-skills — applies the same RED-GREEN-REFACTOR cycle to skill creation
+
+## Pipeline Integration
+
+TDD applies at both code level (this skill) and pipeline level (devflow:using-devflow). The following pipelines use TDD-first ordering:
+
+- **Pipeline 3 (New feature):** TDD-first is the **preferred variant** when acceptance criteria are clear. devflow:test-engineer runs after devflow:interface-designer but before devflow:feature-implementer, producing contract compliance tests in the RED phase. devflow:feature-implementer then implements to GREEN. Standard ordering (feature-implementer before test-engineer) is acceptable only when the feature is exploratory or requirements will crystallize through implementation.
+- **Pipeline 4 (Bug fix):** TDD-first **by design**. devflow:test-engineer writes a failing regression test that encodes the expected correct behavior before devflow:feature-implementer applies any fix. The RED-phase test is the proof that the bug exists; the GREEN result after the fix is the proof that it was resolved. This ordering must never be reversed.
+- **Pipeline 6 (Test-only):** When used to add tests before production code exists (pre-work for a planned feature), devflow:test-engineer operates in **RED phase** — the suite remains RED until Pipeline 3 (feature-implementer) delivers the implementation. The RED state is intentional and must be documented in the Pass 1 completion marker.
+- **Pipeline 9 (Performance):** TDD-first **by design**. devflow:test-engineer codifies the measured baseline as failing `DEVFLOW-THRESHOLD` benchmark tests before devflow:feature-implementer begins the optimization. Writing the benchmark after the optimization removes the guarantee that the threshold was actually unmet before the fix.
+
+**Verifying RED state:** When devflow:test-engineer runs in TDD-first mode (before feature-implementer), all new tests must fail immediately. If any new test passes before the implementation exists, stop and investigate before continuing — the test may be asserting nothing, the implementation may already exist, or the threshold may be set above the baseline.
+
+**Cross-reference:** devflow:test-engineer (agent) enforces these pipeline modes at execution time. devflow:using-devflow (skill) documents the full pipeline context. This skill defines the underlying RED-GREEN-REFACTOR discipline that all pipeline-level TDD ordering enforces.
