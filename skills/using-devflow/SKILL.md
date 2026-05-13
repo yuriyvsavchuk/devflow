@@ -268,7 +268,7 @@ TDD-first is preferred when:
 
 **Notes:**
 - Reproduce first — do not propose or apply a fix before the failure is confirmed
-- devflow:test-engineer writes a failing regression test before devflow:feature-implementer applies the fix
+- **Pipeline 4 is TDD-first by design:** devflow:test-engineer writes a failing regression test that encodes the expected correct behavior before devflow:feature-implementer applies any fix — this is the RED phase; the fix then brings the test to GREEN; never skip or reorder this step; see devflow:test-driven-development for the full RED-GREEN-REFACTOR cycle
 - devflow:feature-implementer applies the minimal fix only — no unrelated cleanup or refactoring
 - When the bug involves a public API boundary with an existing contract in `docs/interfaces/`, devflow:test-engineer must read the contract before writing the regression test — the test should assert the correct contracted behavior, not the previously-observed broken behavior
 - Use devflow:session-continuity at session boundaries to preserve investigation and fix state across sessions
@@ -302,6 +302,7 @@ TDD-first is preferred when:
 **Notes:**
 - devflow:code-simplifier must not alter external behavior or broaden scope beyond the refactor target
 - When the refactor target has an existing contract in `docs/interfaces/`, devflow:code-reviewer must verify the simplified implementation still matches the contract — contract drift is a defect even if all tests pass, because callers depend on the documented shape; surface any drift as a Critical Issue
+- When devflow:test-engineer is prepended (behavior-preservation risk is non-trivial), write the behavior-preservation tests **before** devflow:code-simplifier begins — the tests encode the current observable behavior as a baseline; if any test fails before simplification starts, that is a pre-existing defect, not a simplifier regression; any new failure after simplification is introduced by the simplifier and must be treated as a defect
 - devflow:acceptance-checker confirms behavior is preserved — not improved or extended
 - Use devflow:session-continuity at session boundaries to preserve refactor state across sessions
 - When devflow:context-mapper has run, all downstream workers must read the context map from `docs/context-maps/` before loading any project files — the map is the scoping contract for the pipeline
@@ -320,6 +321,7 @@ TDD-first is preferred when:
 - coverage gaps need to be filled without changing production code
 - an explicit request to add, update, or review tests is made
 - a bug fix was applied and regression tests need to be added in a separate pass
+- tests need to be written before a planned feature's implementation exists, creating the RED phase of a TDD-first cycle (the implementation will follow via Pipeline 3)
 
 **Default pipeline:** `test-engineer → code-reviewer`
 
@@ -331,6 +333,7 @@ TDD-first is preferred when:
 
 **Notes:**
 - devflow:test-engineer must not modify production code unless absolutely necessary for testability, and must explain why if it does
+- When Pipeline 6 is used to add tests before production code exists (TDD-first pre-work for a planned feature), devflow:test-engineer is operating in **RED phase** — all new tests will fail immediately; document the RED state explicitly in the Pass 1 completion marker; do not attempt to make tests pass by touching production code; the suite remains RED until Pipeline 3 (feature-implementer) applies the implementation
 - devflow:code-reviewer is required for complex or shared test infrastructure changes
 - Use devflow:session-continuity at session boundaries to preserve test coverage state across sessions
 - When devflow:context-mapper has run, devflow:test-engineer must read the context map from `docs/context-maps/` before loading any project files — the Associated Test Files list is the primary input
@@ -413,6 +416,7 @@ TDD-first is preferred when:
 
 **Notes:**
 - devflow:performance-profiler must establish measurable baselines and identify the concrete hotspot before devflow:feature-implementer begins — never optimize without a measured target
+- **Pipeline 9 is TDD-first by design:** devflow:test-engineer codifies the measured baseline and target threshold as failing benchmark tests (annotated with `DEVFLOW-THRESHOLD`) before devflow:feature-implementer begins the optimization — this is the RED phase; the optimization then brings the benchmark test to GREEN; devflow:acceptance-checker validates the final measurement against the same threshold; never write the benchmark after the optimization — it removes the guarantee that the threshold was actually unmet before the fix
 - If devflow:performance-profiler cannot identify a concrete hotspot (tooling unavailable, environment not representative), stop and resolve the measurement gap before proceeding — do not guess
 - devflow:feature-implementer addresses one hotspot at a time — do not combine multiple optimizations in a single pass
 - devflow:acceptance-checker validates before/after measurements against the criteria defined by devflow:performance-profiler — subjective "it feels faster" is not evidence

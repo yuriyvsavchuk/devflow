@@ -88,6 +88,36 @@ git commit -m "feat: add specific feature"
 ```
 ```
 
+## TDD-First Plans
+
+When devflow:using-devflow routes the task through a TDD-first pipeline variant (Pipeline 3 preferred, Pipeline 4 and 9 always), the plan must reflect TDD ordering explicitly:
+
+- **Place a RED checkpoint before each implementation step.** The step before "Write implementation" must be "Write failing test" + "Run test — confirm FAIL". Do not merge these into a single step.
+- **Acceptance criteria → test mapping.** For each acceptance criterion in the plan, the corresponding test step must reference it by name or number, so the reviewer can trace every test back to a criterion.
+- **Name the RED/GREEN/REFACTOR phase in each task.** Label the failing-test step as `(RED)`, the implementation step as `(GREEN)`, and any cleanup step as `(REFACTOR)`.
+- **Do not plan a failing test and a passing implementation in the same atomic step.** They must be separate steps with separate run commands and separate expected outcomes.
+- **When planning Pipeline 4 (bug fix):** the first task in the plan is always the regression test (RED), not the fix. The fix is a separate task that references the failing test by name.
+
+**Example task structure for TDD-first:**
+
+```markdown
+### Task N: Add user search endpoint
+
+**Step 1: Write failing contract compliance test (RED)**
+...test code...
+Run: `pytest tests/test_search.py::test_search_returns_results -v`
+Expected: FAIL — "ImportError" or "404 Not Found"
+
+**Step 2: Write minimal implementation (GREEN)**
+...implementation code...
+Run: `pytest tests/test_search.py::test_search_returns_results -v`
+Expected: PASS
+
+**Step 3: Refactor and commit (REFACTOR)**
+...cleanup...
+Run: `pytest tests/ -v` — all green
+```
+
 ## Remember
 - Exact file paths always
 - Complete code in plan (not "add validation")
