@@ -664,6 +664,13 @@ At minimum, all worker outputs must include:
 - `Reason: resuming implementation after a completed research phase — devflow:task-planner must read the poc-retrospective from docs/spikes/ (if arriving from a spike) or the api-researcher findings from the prior session (if arriving from API research) before producing the plan (pipeline 3 — cross-pipeline resume)`
 - `Current agent: task-planner`
 
+### Example: "Looks good, proceed" / "Yes, continue" / "Go ahead" (mid-pipeline confirmation)
+- `Selected worker agents: none (pipeline continuation)`
+- `Reason: message is a confirmation to proceed — no new task, question, or direction introduced; the active pipeline announced in the prior routing step remains in effect`
+- `Current agent: <next agent in the active pipeline as last announced — do not re-route>`
+
+This is the correct output whenever the user's message is a confirmation or approval of a worker's output within an active pipeline. The pipeline is NOT restarted. The routing check fires (as required by CLAUDE.md), produces `none`, and the next worker in the sequence proceeds immediately. If it is unclear which agent is next, re-state the remaining pipeline steps before continuing.
+
 ---
 
 ## Final Principle

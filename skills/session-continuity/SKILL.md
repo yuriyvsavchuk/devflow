@@ -20,9 +20,11 @@ This skill ensures state is captured at the end of a session and restored at the
 - You want to hand off context cleanly — whether to yourself or to another agent
 
 **At session start** (read mode):
-- Resuming work from a previous session
-- Starting a new session on a project with existing in-progress work
+- Resuming work from a previous session where a snapshot was explicitly written
+- Starting a new session on a project with existing in-progress work that spans multiple sessions
 - An agent is being spawned into a context it did not participate in
+
+Only invoke read mode when a snapshot file exists for the current topic in `docs/sessions/`. A snapshot's presence is the signal that this work spans sessions — no other judgment is needed. Unnecessary reads add the snapshot's full token cost to the context immediately, which accelerates context compaction without benefit.
 
 ---
 
@@ -104,7 +106,7 @@ What a fresh session needs to know to pick up without re-reading everything. Inc
 
 ## Read Mode — Restoring State
 
-At the start of a session, before any work:
+Only invoke when a snapshot file exists for the current topic in `docs/sessions/`. At the start of such a session, before any work:
 
 1. Check for an existing snapshot: `docs/sessions/`
 2. Read the most recent snapshot for the current topic
@@ -136,6 +138,9 @@ Check that files, branches, and states referenced in the snapshot still exist be
 **Rule 5 — One snapshot per topic, updated in place.**  
 Do not accumulate daily snapshot files. Update the existing file so the topic's history is in one place.
 
+**Rule 6 — This is deliberate discipline, not automatic.**  
+Do not invoke session-continuity on every session start or after every response. Invoke write mode at natural breakpoints — after completing a plan task, after a significant decision, before ending a session where work will continue. Invoke read mode only when resuming work that was previously captured in a snapshot. Pre-compaction automatic triggering is not architecturally possible; the platform's compaction summary is the baseline; session-continuity is the upgrade when the work warrants it.
+
 ---
 
 ## Integration with Other Skills
@@ -146,4 +151,4 @@ Do not accumulate daily snapshot files. Update the existing file so the topic's 
 | After each significant decision | Update Decisions Made section |
 | After devflow:poc-retrospective completes | Update Status to complete; link to retrospective doc |
 | Before ending a multi-session plan execution | Capture Work Completed and Work Remaining |
-| At start of resumed session | Read mode — orient before acting |
+| At start of a session where a snapshot file exists for the topic | Read mode — orient before acting; snapshot presence is the only signal needed |
