@@ -118,3 +118,4 @@ The Team Extension operates within a sprint. The Project Extension operates abov
 | Access request guide | `devflow/team/GETTING-ACCESS.md` (public) | Instructions to request devflow-team access |
 | Team manual | `devflow-team/USER-MANUAL-TEAM.md` (private) | Full team framework manual |
 | This document | `devflow/docs/vision/devflow-extensions.md` (public) | Extensions vision — team and project |
+| Detailed requirements | `devflow-team/docs/vision/team-extension-requirements.md` (private) | Full domain decisions, phase deliverables, acceptance criteria |
