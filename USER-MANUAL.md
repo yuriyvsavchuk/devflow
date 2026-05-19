@@ -1497,7 +1497,7 @@ cp -r agents/* ~/.claude/agents/
 Add the routing instruction to your `~/.claude/CLAUDE.md` (create it if it does not exist):
 
 ```markdown
-For EVERY task — no exceptions — invoke the `using-devflow` skill before doing any work.
+Before responding to EVERY user message — no exceptions — invoke the `using-devflow` skill before doing any work.
 ```
 
 This single line is what activates Devflow. Without it, Claude Code will not automatically apply the router.
@@ -1519,7 +1519,7 @@ If you do not see this, check that `~/.claude/CLAUDE.md` contains the routing in
 Add a `CLAUDE.md` in any project directory to enable Devflow for that project specifically:
 
 ```markdown
-For EVERY task — no exceptions — invoke the `using-devflow` skill before doing any work.
+Before responding to EVERY user message — no exceptions — invoke the `using-devflow` skill before doing any work.
 ```
 
 This scopes Devflow to that project without affecting global behavior.

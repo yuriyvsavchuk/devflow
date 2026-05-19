@@ -99,8 +99,27 @@ cp -r agents/* ~/.claude/agents/
 Then add the routing instruction to your `~/.claude/CLAUDE.md`:
 
 ```markdown
-For EVERY task — no exceptions — invoke the `using-devflow` skill before doing any work.
+Before responding to EVERY user message — no exceptions — invoke the `using-devflow` skill before doing any work.
 ```
+
+## Team Extension
+
+Devflow v1 makes one developer more effective in isolation. The **Team Extension** (`devflow-team`) extends the framework for enterprise software teams — developers, QA/SDET, BA, DevOps, SRE, and Scrum roles working in parallel.
+
+Phases 1–4 are complete and in active use:
+
+| Phase | What it adds |
+|---|---|
+| 1 — Coding Foundation | AI trust zones (Green/Yellow/Red), PR comprehension gate, contributor tier model |
+| 2 — Structural Ledger | Shared ledger of ADRs and interface changes; `sync-context` delivers relevant decisions to contributor sessions automatically |
+| 3 — QA Pipeline | Spec-driven two-pass testing, `test-reviewer` sub-agent, Red zone commented assertion pattern |
+| 4 — Scrum Integration | Pre-refinement pipeline, daily digest, sprint review artifact, Jira integration layer |
+
+Phase 5 (Release Governance) is planned. A Project Extension for cross-sprint and portfolio-level coordination is envisioned.
+
+The `devflow-team` repository is private and access-controlled. See [`team/README.md`](team/README.md) for an overview and [`team/GETTING-ACCESS.md`](team/GETTING-ACCESS.md) to request access.
+
+For the full vision, design principles, and what each phase enables: [`docs/vision/devflow-extensions.md`](docs/vision/devflow-extensions.md).
 
 ## How It Works
 
