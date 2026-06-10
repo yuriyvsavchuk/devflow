@@ -57,6 +57,8 @@ Teams define three zones per project — Green (AI-authored), Yellow (AI-assiste
 
 Authors produce a structured comprehension summary before code review begins — written in their own words, covering what the change does, which sections they understand, and which AI-generated sections they validated. The gate proves understanding was demonstrated, not passively accepted. `code-reviewer` checks for the summary and will not proceed without it.
 
+An optional **PR Review Policy** (`devflow-review-policy.md`) extends the review process with team-defined standards: review points (what must be checked), severity levels (Blocking / Non-blocking / Question), SLA thresholds surfaced as digest signals, and reviewer tier requirements per contributor tier. When present, `code-reviewer` runs a policy compliance assessment in both self-review and reviewer modes. Two independent assessments per PR are preserved in `docs/team/pr-reviews/` and feed Daily Digest SLA signals, Sprint Review compliance summaries, and Sprint Retrospective policy trend analysis. If the file is absent, all existing review behavior is unchanged.
+
 #### Structural Ledger and Decision Broadcast (Phase 2)
 
 Every structurally significant pipeline run — ADR settled, interface contract created or updated — produces a ledger entry and updates a shared index. When a contributor starts a new session, `devflow:sync-context` filters the ADR and ledger indexes to their working subsystems and delivers a targeted briefing. Decisions made by teammates propagate automatically into working contexts. No manual scanning of the shared repo required.
@@ -118,3 +120,4 @@ The Team Extension operates within a sprint. The Project Extension operates abov
 | Access request guide | `devflow/team/GETTING-ACCESS.md` (public) | Instructions to request devflow-team access |
 | Team manual | `devflow-team/USER-MANUAL-TEAM.md` (private) | Full team framework manual |
 | This document | `devflow/docs/vision/devflow-extensions.md` (public) | Extensions vision — team and project |
+| Detailed requirements | `devflow-team/docs/vision/team-extension-requirements.md` (private) | Full domain decisions, phase deliverables, acceptance criteria |

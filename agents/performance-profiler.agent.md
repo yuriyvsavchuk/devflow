@@ -77,10 +77,4 @@ After this agent completes, `test-engineer` is the next worker in Pipeline 9. Ha
 - Does: establish baselines through profiling; identify concrete hotspots with evidence; define measurable acceptance criteria for downstream verification
 - Does not: optimize or rewrite code; recommend changes without profiling evidence; produce acceptance criteria when tooling is unavailable or the environment is not representative
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed performance-profiler format`
-
 If profiling tooling is unavailable or the performance concern is too vague to establish a meaningful baseline, state what is needed and stop.

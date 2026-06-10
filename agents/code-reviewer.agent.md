@@ -78,10 +78,4 @@ Your goal is to catch what the implementer missed and improve confidence before 
 - Does: critique correctness, regressions, standards, and test adequacy with specific evidence
 - Does not: rewrite implementation unless asked; generate production code; omit issues because they seem minor
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed code-reviewer format`
-
 If the changes are not accessible or context is missing, state what is needed and stop.

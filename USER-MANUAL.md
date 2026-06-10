@@ -1,5 +1,7 @@
 # Devflow User Manual
 
+> **⚠ SUPERSEDED (2026-06-10).** This manual describes **Devflow v1**. The router/pipeline system in sections 2, 5–7, and 12 was replaced in v2 by `devflow-dispatch` + six playbooks with effort tiers — see [README.md](README.md) for the v2 model and [MIGRATION-v2.md](MIGRATION-v2.md) for the upgrade. Artifact directories and formats (`docs/decisions/`, `docs/interfaces/`, `docs/sessions/`, `docs/context-maps/`) are unchanged and remain accurate. The full v2 manual lands at the end of v2 Phase 3.
+
 A practical guide to the Devflow framework — what it is, why it exists, how to install it, and how to get the most out of it.
 
 ---
@@ -269,6 +271,8 @@ graph LR
 ---
 
 ## 5. The Eleven Pipelines
+
+> **Superseded in v2:** the eleven pipelines were consolidated into six playbooks — see the mapping table in [skills/using-devflow/SKILL.md](skills/using-devflow/SKILL.md). This section is kept as v1 reference until the v2 manual replaces it.
 
 Each pipeline maps a task type to an ordered sequence of workers. Workers are selected, announced, and executed in sequence. The router always makes the pipeline visible before work begins.
 

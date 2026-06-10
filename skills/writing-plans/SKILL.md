@@ -146,12 +146,12 @@ After saving the plan, immediately proceed with subagent-driven execution. Do no
 - Missing the test step between implementation and commit
 - Omitting exact file paths — implementers should not need to search for them
 - Planning too many tasks at once — plans longer than ~8 tasks are usually too large for one session
-- Skipping the devflow:scope-estimator when the scope is unclear
+- Skipping the Size & Confidence assessment (task-planner section 7) when the scope is unclear
 
 ## Related Skills and Agents
 
 - **Preceded by:** devflow:brainstorming or devflow:interview
 - **Followed by:** devflow:subagent-driven-development or devflow:executing-plans
-- Use devflow:scope-estimator before writing plans when scope is uncertain
+- Require the task-planner's Size & Confidence section before writing plans when scope is uncertain — XL or Low confidence means split or investigate first
 - Use devflow:dispatching-parallel-agents to parallelize independent tasks within the plan
 - Use devflow:spike-executor if any plan step relies on an unvalidated technical assumption

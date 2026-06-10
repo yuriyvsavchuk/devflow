@@ -1,6 +1,6 @@
 ---
 name: adr-writer
-description: Write a structured Architecture Decision Record when a significant design decision is made during planning, technology selection, or API research — before implementation begins. Triggered after brainstorming, technology-selector, or api-researcher when the decision affects multiple components, is hard to reverse, or involves named trade-offs.
+description: Write a structured Architecture Decision Record when a significant design decision is made during planning, technology selection, or API research — before implementation begins. Triggered after brainstorming, technology-selector, or researcher when the decision affects multiple components, is hard to reverse, or involves named trade-offs.
 framework: devflow
 ---
 
@@ -22,7 +22,7 @@ Write an ADR when a decision meets **at least two** of the following criteria:
 **Common triggers:**
 - `technology-selector` produces a recommendation (library, framework, database, protocol choice)
 - `brainstorming` concludes with a significant structural or data model decision
-- `api-researcher` reveals an adoption pattern that commits the project to a specific integration approach
+- `researcher` (API mode, via the `devflow-shape` research gate) reveals an adoption pattern that commits the project to a specific integration approach
 - A spike (`poc-retrospective`) produces a Proceed decision that also constitutes an architectural commitment
 
 ## When NOT to Use
@@ -58,7 +58,7 @@ Where `short-title` is a kebab-case slug derived from the decision title (e.g., 
 **Date:** YYYY-MM-DD
 **Status:** Accepted
 <!-- Valid values: Proposed | Accepted | Deprecated | Superseded by ADR-NNNN -->
-**Context source:** [brainstorming | technology-selector | api-researcher | poc-retrospective | architecture discussion]
+**Context source:** [brainstorming | technology-selector | researcher | poc-retrospective | architecture discussion]
 
 ## Context
 
@@ -80,7 +80,7 @@ State the decision in one or two sentences. Be specific — name the technology,
 ## Rationale
 
 Why this option over the alternatives? What criteria drove the decision?
-Reference specific constraints, requirements, or findings from `technology-selector` or `api-researcher` where applicable.
+Reference specific constraints, requirements, or findings from `technology-selector` or `researcher` where applicable.
 
 ## Trade-offs Accepted
 
@@ -107,9 +107,9 @@ Examples: "If the team grows beyond X engineers", "If latency requirements tight
 
 | Situation | Next Step |
 |---|---|
-| Decision made during Pipeline 0 | Continue to `scope-estimator` or `writing-plans`; link the ADR in the implementation plan |
+| Decision made during `devflow-shape` | Continue to the sizing step and `writing-plans`; link the ADR in the implementation plan |
 | Decision made after a spike Proceed | Continue to `writing-plans` for production implementation; the plan's constraints section should reference this ADR |
-| Decision made during Pipeline 2 | Continue to Pipeline 3; `task-planner` should read this ADR before producing the implementation plan |
+| Decision made at the research gate | Continue to `devflow-build`; `task-planner` should read this ADR before producing the implementation plan |
 | Decision supersedes an earlier ADR | Update the earlier ADR's Status to `Superseded by ADR-NNNN` |
 
 ---
@@ -133,7 +133,7 @@ If a single session produces multiple significant decisions, write multiple ADRs
 
 ## Related Skills and Agents
 
-- **Preceded by:** devflow:brainstorming, devflow:technology-selector, devflow:api-researcher, or devflow:poc-retrospective — one of these produces the decision that this skill records
-- **Followed by:** devflow:writing-plans (Pipeline 0/1 transitions) or devflow:task-planner via Pipeline 3 — the ADR is an input to the implementation plan; `task-planner` checks `docs/decisions/` before planning
+- **Preceded by:** devflow:brainstorming, devflow:technology-selector, the `researcher` agent, or devflow:poc-retrospective — one of these produces the decision that this skill records
+- **Followed by:** devflow:writing-plans (shape/spike transitions) or devflow-build's planning step — the ADR is an input to the implementation plan; `task-planner` checks `docs/decisions/` before planning
 - **Complementary to:** devflow:poc-retrospective — retrospective records what a hands-on experiment revealed; ADR records the architectural decision that follows from it; both may be written in sequence for a single spike that produces a Proceed decision with architectural consequences
 - Use devflow:poc-retrospective for spike/experiment records; use devflow:adr-writer for design decisions derived from analysis, discussion, or technology selection rather than hands-on experiment

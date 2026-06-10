@@ -1,3 +1,2 @@
-tools/lint-framework.py
-tools/verify_fixes.py
-tools/__pycache__/lint-framework.cpython-313.pyc
+tools/*
+local/

@@ -67,4 +67,4 @@ Start by understanding the current project context, then ask questions one at a 
 - **Followed by:** devflow:writing-plans
 - Use devflow:interview first when the idea is vague and needs structured requirement extraction
 - Use devflow:spike-executor when feasibility of an approach is unknown before committing to a design
-- Use devflow:scope-estimator to size the work before committing to a plan
+- Size the work (task-planner's Size & Confidence section, or devflow-shape step 4) before committing to a plan

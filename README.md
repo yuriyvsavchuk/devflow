@@ -1,92 +1,47 @@
 # Devflow
 
-A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) custom skills and worker agent definitions that enforce disciplined, pipeline-routed AI-assisted development workflows.
+A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) custom skills and worker agent definitions for disciplined, playbook-guided AI-assisted development.
 
-The framework routes every task through a named pipeline of specialized workers — planner, implementer, tester, reviewer, checker — before any code, test, or documentation is written. Workers self-identify, stay in role, and produce structured output. No silent fallback to generic behavior.
+**v2 model: playbooks guide, rails verify.** A lightweight dispatch skill classifies each new task into one of six playbooks at one of three effort tiers. Playbooks shape the order of work — requirements before plans, reproduction before fixes, measurement before optimization — and produce durable artifacts: specs, plans, ADRs, interface contracts, session records. Deterministic verification (a CLI with run state, Claude Code hooks, CI checks) ships in Phase 2 of the v2 programme; until then the framework is guidance plus artifacts, and says so honestly.
 
-For full usage guidance, pipeline descriptions, and examples see [USER-MANUAL.md](USER-MANUAL.md).
+## How It Works
+
+1. A new task arrives → **`devflow-dispatch`** classifies it in one line: playbook + effort tier (~800 tokens of routing context, loaded once per task — not per message).
+2. Only the **selected playbook** loads. It guides the work step by step and produces its artifacts along the way.
+3. **Reviewer and acceptance roles run as fresh-context subagents** at standard/full tiers — independence by construction, with findings ranked Blocking / Non-blocking / Question.
+4. Mid-course corrections are expected: every playbook transition re-checks "still the right playbook and tier?"
+
+## Playbooks
+
+| Playbook | Use for | Flow |
+|---|---|---|
+| `devflow-shape` | Requirements analysis, specification, planning | clarify → research gate → spec with `AC-n` criteria → size → plan |
+| `devflow-build` | Features, behavior changes, refactors, performance | plan → contract → tests → implement → review → accept |
+| `devflow-fix` | Bugs, stack traces, wrong behavior | reproduce → failing test → minimal fix → review → accept |
+| `devflow-hotfix` | Production incidents | mitigate → verify → ship → record tracked debt → follow-up fix |
+| `devflow-spike` | Feasibility questions, approach comparison | hypothesis → throwaway experiment → mandatory retrospective |
+| `devflow-audit` | Review requests, security audits | scoped review → severity-ranked findings (security: threat model → dependency scan → review) |
+
+Tests-only and docs-only work goes directly to the `test-engineer` / `docs-updater` agents — no playbook ceremony.
+
+## Effort Tiers
+
+| Tier | When | What runs |
+|---|---|---|
+| `quick` | Small, low-risk, no new interfaces | Playbook checklist inline; no subagents |
+| `standard` *(default)* | Everything else | Playbook in main session + one fresh-context reviewer subagent |
+| `full` | Public APIs, shared modules, risk keywords (auth, payment, migration…) | Independent reviewer + acceptance subagents; contracts; context maps |
+
+The user's one-word override always wins: `quick: fix the date format` / `full: change the billing API`.
 
 ## What's Inside
 
-### Skills (`skills/`)
+- **`skills/`** — the dispatch skill, six playbooks, and the supporting process skills they call (`writing-plans`, `test-driven-development`, `systematic-debugging`, `poc-retrospective`, `session-continuity`, `finishing-a-development-branch`, and more).
+- **`agents/`** — worker subagents with focused roles and per-role model tiers: planner, implementer, test engineer, reviewer, acceptance checker, researcher, triager, profiler, and others. Planning runs on Sonnet by default and escalates to Opus only for `full`-tier or XL/low-confidence work.
 
-Reusable process guides that Claude Code invokes via slash commands. Each skill lives in its own directory with a `SKILL.md` file.
-
-| Skill | Purpose |
-|---|---|
-| `using-devflow` | Router/gatekeeper — selects the correct named pipeline and routes every task through it before any work begins |
-| `writing-plans` | Structured implementation planning before coding |
-| `test-driven-development` | RED-GREEN-REFACTOR cycle enforcement |
-| `systematic-debugging` | Root-cause analysis before proposing fixes |
-| `brainstorming` | Explores intent, requirements, and design before implementation |
-| `interview` | Structured requirements extraction through one-at-a-time questioning |
-| `adr-writer` | Documents significant architectural decisions in `docs/decisions/` before implementation begins |
-| `writing-skills` | TDD-based approach to creating and testing new skills |
-| `find-bugs` | Security and code quality audit of local branch changes |
-| `code-simplifier` | Orchestrates code cleanup for clarity and consistency while preserving behavior |
-| `requesting-code-review` | Verifies work meets requirements before merging |
-| `receiving-code-review` | Enforces technical rigor when processing review feedback |
-| `verification-before-completion` | Evidence-based verification before claiming work is done |
-| `dispatching-parallel-agents` | Parallelizes independent tasks across subagents for concurrent execution |
-| `subagent-driven-development` | Executes plans with independent implementation agents |
-| `executing-plans` | Runs implementation plans with review checkpoints |
-| `finishing-a-development-branch` | Guides branch completion — merge, PR, or cleanup |
-| `using-git-worktrees` | Creates an isolated git worktree and feature branch before implementation begins |
-| `spike-executor` | Orchestrates the full spike/POC lifecycle — hypothesis → experiment → decision |
-| `poc-retrospective` | Captures spike decision, learnings, carry-forwards, and cleanup after an investigation |
-| `hypothesis-validator` | Designs and runs a minimal experiment to test one specific technical assumption |
-| `session-continuity` | Writes/reads structured state snapshots for multi-session work |
-
-### Agents (`agents/`)
-
-Worker agent definitions that pipelines route tasks to. Each agent has a focused role, strict boundaries, and a model chosen for its cognitive tier.
-
-| Agent | Role | Model |
-|---|---|---|
-| `task-planner` | Translates tasks into minimal, executable implementation plans | Opus |
-| `context-mapper` | Traces dependency blast area and writes a context map for downstream workers | Haiku |
-| `feature-implementer` | Implements one scoped plan step with minimal diff | Sonnet |
-| `test-engineer` | Writes/updates tests, regression coverage, and edge cases | Sonnet |
-| `code-reviewer` | Reviews correctness, regressions, standards, and test adequacy | Sonnet |
-| `acceptance-checker` | Maps implementation to acceptance criteria with evidence | Sonnet |
-| `docs-updater` | Keeps documentation aligned with recent code changes | Haiku |
-| `api-researcher` | Researches external APIs/libraries and produces implementation guidance | Sonnet |
-| `bug-repro-triager` | Produces repro steps, hypotheses, and investigation plans | Sonnet |
-| `code-simplification` | Simplifies recently modified code while preserving exact behavior | Sonnet |
-| `research` | General-purpose technical research for any domain, library, or concept | Sonnet |
-| `spike-investigator` | Hands-on experimentation agent that validates a hypothesis in throwaway mode | Sonnet |
-| `technology-selector` | Evaluates technology/library options and produces a single recommendation with trade-offs | Opus |
-| `scope-estimator` | Rough effort/complexity sizing per work area before writing a full implementation plan | Sonnet |
-| `performance-profiler` | Establishes baselines, identifies hotspots through profiling, defines measurable acceptance criteria before optimization | Sonnet |
-| `threat-modeler` | Maps attack surface for a change (inputs, auth paths, trust boundaries, data flows) and produces a threat checklist for security review | Sonnet |
-| `dependency-auditor` | Runs ecosystem-native scanners (npm/pip/cargo audit), flags CVEs, license issues, and outdated pins | Sonnet |
-| `interface-designer` | Defines interface contracts (OpenAPI 3.x specs, TypeScript interfaces, AsyncAPI schemas) before implementation begins | Sonnet |
-
-**Model tiers:** Opus for high-stakes reasoning (planning, architecture decisions); Haiku for mechanical tasks (dependency mapping, doc sync); Sonnet for everything in between.
-
-## Pipelines
-
-`using-devflow` maps every task to one of eleven named pipelines:
-
-| # | Name | Default worker sequence |
-|---|------|------------------------|
-| 0 | Requirements gathering | `interview → brainstorming → scope-estimator → writing-plans` |
-| 1 | Spike / POC investigation | `research → spike-investigator → poc-retrospective` |
-| 2 | Unfamiliar API / library | `api-researcher` → transition to Pipeline 3 |
-| 3 | New feature / behavior change | `task-planner → feature-implementer → test-engineer → code-reviewer → acceptance-checker` |
-| 4 | Bug fix / runtime failure | `bug-repro-triager → test-engineer → feature-implementer → code-reviewer → acceptance-checker` |
-| 5 | Refactor / simplification | `task-planner → code-simplifier → code-reviewer → acceptance-checker` |
-| 6 | Test-only | `test-engineer → code-reviewer` |
-| 7 | Review-only | `code-reviewer` |
-| 8 | Docs-only | `docs-updater` |
-| 9 | Performance / optimization | `performance-profiler → test-engineer → feature-implementer → code-reviewer → acceptance-checker` |
-| 10 | Security audit | `threat-modeler → dependency-auditor → find-bugs` |
-
-Each pipeline defines Variants (optional additions), Notes (discipline rules), and a Transition (what happens when the pipeline completes or loops back).
+Every artifact lands in the repo: `docs/specs/`, `docs/decisions/` (ADRs), `docs/interfaces/` (contracts), `docs/sessions/` (continuity snapshots and hotfix debt), `docs/context-maps/`.
 
 ## Installation
-
-Copy skills and agents into your Claude Code configuration directory:
 
 ```sh
 # Skills
@@ -96,38 +51,17 @@ cp -r skills/* ~/.claude/skills/
 cp -r agents/* ~/.claude/agents/
 ```
 
-Then add the routing instruction to your `~/.claude/CLAUDE.md`:
+Then add the activation line to your `~/.claude/CLAUDE.md` (or a project's `CLAUDE.md`):
 
 ```markdown
-Before responding to EVERY user message — no exceptions — invoke the `using-devflow` skill before doing any work.
+When a new development task begins, invoke the devflow-dispatch skill to classify it. Do not re-invoke for mid-task messages or follow-up confirmations.
 ```
+
+**Migrating from v1:** the v1 `using-devflow` router is now a redirect with a full pipeline→playbook mapping — see [skills/using-devflow/SKILL.md](skills/using-devflow/SKILL.md). All v1 artifact directories and formats are unchanged.
 
 ## Team Extension
 
-Devflow v1 makes one developer more effective in isolation. The **Team Extension** (`devflow-team`) extends the framework for enterprise software teams — developers, QA/SDET, BA, DevOps, SRE, and Scrum roles working in parallel.
-
-Phases 1–4 are complete and in active use:
-
-| Phase | What it adds |
-|---|---|
-| 1 — Coding Foundation | AI trust zones (Green/Yellow/Red), PR comprehension gate, contributor tier model |
-| 2 — Structural Ledger | Shared ledger of ADRs and interface changes; `sync-context` delivers relevant decisions to contributor sessions automatically |
-| 3 — QA Pipeline | Spec-driven two-pass testing, `test-reviewer` sub-agent, Red zone commented assertion pattern |
-| 4 — Scrum Integration | Pre-refinement pipeline, daily digest, sprint review artifact, Jira integration layer |
-
-Phase 5 (Release Governance) is planned. A Project Extension for cross-sprint and portfolio-level coordination is envisioned.
-
-The `devflow-team` repository is private and access-controlled. See [`team/README.md`](team/README.md) for an overview and [`team/GETTING-ACCESS.md`](team/GETTING-ACCESS.md) to request access.
-
-For the full vision, design principles, and what each phase enables: [`docs/vision/devflow-extensions.md`](docs/vision/devflow-extensions.md).
-
-## How It Works
-
-1. Every task triggers `using-devflow` first
-2. The skill selects a named pipeline and announces the ordered worker sequence
-3. Each worker self-identifies, stays in role, and produces structured output
-4. Workers transition to the next worker in the pipeline — or loop back if review feedback or acceptance gaps require it
-5. No silent fallback to generic behavior — routing is always visible and auditable
+Devflow makes one developer (or a small team sharing a repo) more effective. The **Team Extension** (`devflow-team`) adds coordination for larger teams — structural ledger, decision broadcast, spec-driven QA, cadence/ceremony support. It is private and access-controlled; see [`team/README.md`](team/README.md) and [`team/GETTING-ACCESS.md`](team/GETTING-ACCESS.md).
 
 ## License
 
