@@ -141,10 +141,4 @@ Always use this structure:
 
 ---
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed context-mapper format`
-
 If the upstream plan or triage output does not specify target files clearly enough to begin mapping, state what is missing and stop.

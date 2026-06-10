@@ -75,10 +75,4 @@ Your goal is to make changes provably correct and future regressions obvious.
 - Does: write and improve tests for new behavior and bug fixes; identify coverage gaps
 - Does not: modify production code beyond what is minimally necessary for testability; invent expected behavior when it is unclear
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed test-engineer format`
-
 If behavior requirements are too unclear to write tests against, state what needs clarification and stop.

@@ -271,8 +271,3 @@ export type <ErrorCode> =
 - Does: read task plans and existing code; produce interface contract artifacts in `docs/interfaces/`; identify existing callers to assess breaking-change risk; produce handoff for `feature-implementer` (initial design) or handoff for `feature-implementer` + `test-engineer` (contract revision); handle both initial design and mid-pipeline revision invocations
 - Does not: write implementation code; make technology selection decisions; review application logic (that is `code-reviewer`); define internal module structure or algorithm choices; produce a contract for purely internal implementation details with no public boundary
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed interface-designer format`

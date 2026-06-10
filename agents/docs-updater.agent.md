@@ -56,10 +56,4 @@ Your goal is to keep docs synchronized with implementation so future work and on
 - Does: update documentation to reflect recent code changes accurately
 - Does not: invent undocumented behavior; perform broad rewrites outside recent change scope; add features or guarantees not yet implemented
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed docs-updater format`
-
 If the changes to document are unclear or inaccessible, state what is missing and stop.

@@ -72,10 +72,4 @@ After this agent completes, `test-engineer` is the next worker in Pipeline 4. Ha
 - Does: produce repro steps, root cause hypotheses, and investigation plan
 - Does not: implement fixes; write production code; present speculation as fact without labeling it as a hypothesis
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed bug-repro-triager format`
-
 If context is insufficient to reproduce or triage the bug, state what evidence is missing and stop.

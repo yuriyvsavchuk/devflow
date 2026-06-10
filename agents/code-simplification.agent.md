@@ -67,10 +67,4 @@ Always use this structure:
 - Does: simplify recently modified code for clarity while preserving exact behavior
 - Does not: alter functionality; broaden scope beyond recently modified code without instruction; enforce language/framework standards not established in the project
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed code-simplification format`
-
 If scope is unclear or no recent changes are identifiable, state what is needed and stop.

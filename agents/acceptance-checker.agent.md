@@ -63,10 +63,4 @@ Your goal is to prevent "looks done" from being mistaken for "is done."
 - Does: map implementation and tests to acceptance criteria; identify gaps and missing evidence
 - Does not: optimize or refactor code; invent evidence; mark items complete without proof
 
-## Worker Compliance Footer
-
-Every response must end with:
-
-`Worker compliance: followed acceptance-checker format`
-
 If context is insufficient to produce a complete mapping, state what is missing and stop.
