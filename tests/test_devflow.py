@@ -165,5 +165,134 @@ class TestStateRobustness(StateCoreBase):
         self.assertIsNone(devflow.load_state(self.root))
 
 
+class GateBase(StateCoreBase):
+    """Gate tests feed cmd_gate the same JSON the spike captured from the harness."""
+
+    def payload(self, file_path, tool="Write"):
+        return json.dumps({
+            "session_id": "t", "hook_event_name": "PreToolUse",
+            "tool_name": tool, "tool_input": {"file_path": str(file_path)},
+            "cwd": str(self.root), "permission_mode": "acceptEdits",
+        })
+
+    def write_config(self, **overrides):
+        cfg = dict(devflow.DEFAULT_CONFIG)
+        cfg.update(overrides)
+        (self.root / ".devflow" / "config.json").write_text(
+            json.dumps(cfg), encoding="utf-8")
+
+    def gate(self, file_path, tool="Write"):
+        return devflow.cmd_gate(self.root, self.payload(file_path, tool))
+
+
+class TestGateProtectedPaths(GateBase):
+    def test_protected_path_denied_without_any_run(self):
+        self.write_config(protected_paths=["src/auth/*"])
+        code, msg = self.gate(self.root / "src" / "auth" / "login.py")
+        self.assertEqual(code, 2)
+        self.assertIn("PROTECTED", msg)
+        self.assertIn("human authorship", msg)
+
+    def test_protected_path_denied_even_after_red(self):
+        self.write_config(protected_paths=["src/auth/*"])
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        devflow.cmd_mark(self.root, "repro-confirmed")
+        devflow.cmd_mark(self.root, "red-confirmed")
+        code, _ = self.gate(self.root / "src" / "auth" / "login.py")
+        self.assertEqual(code, 2)
+
+    def test_unprotected_sibling_allowed(self):
+        self.write_config(protected_paths=["src/auth/*"])
+        code, _ = self.gate(self.root / "src" / "billing" / "x.py")
+        self.assertEqual(code, 0)
+
+
+class TestGateRedPhase(GateBase):
+    def setUp(self):
+        super().setUp()
+        self.write_config()
+
+    def test_pre_red_production_edit_denied(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        code, msg = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 2)
+        self.assertIn("red", msg.lower())
+        self.assertIn("mark red-confirmed", msg)
+
+    def test_post_red_allowed(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        devflow.cmd_mark(self.root, "repro-confirmed")
+        devflow.cmd_mark(self.root, "red-confirmed")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)
+
+    def test_quick_tier_not_gated(self):
+        devflow.cmd_start(self.root, "fix", tier="quick", task="t")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)
+
+    def test_tests_and_docs_excluded(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        for p in [self.root / "tests" / "test_app.py", self.root / "notes.md",
+                  self.root / "docs" / "spec.txt"]:
+            code, _ = self.gate(p)
+            self.assertEqual(code, 0, f"should be excluded: {p}")
+
+    def test_no_run_allows(self):
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)
+
+    def test_non_gated_playbook_allows(self):
+        devflow.cmd_start(self.root, "shape", tier="standard", task="t")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)
+
+    def test_build_no_tdd_exception_opens_gate(self):
+        devflow.cmd_start(self.root, "build", tier="standard", task="t")
+        devflow.cmd_mark(self.root, "plan-confirmed")
+        devflow.cmd_mark(self.root, "implemented", no_tdd_reason="post-spike")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)
+
+    def test_loop_back_before_red_re_arms_gate(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        devflow.cmd_mark(self.root, "repro-confirmed")
+        devflow.cmd_mark(self.root, "red-confirmed")
+        devflow.cmd_mark(self.root, "repro-confirmed")  # loop back before red
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 2)
+
+
+class TestGateFailOpen(GateBase):
+    def test_malformed_stdin_allows(self):
+        code, _ = devflow.cmd_gate(self.root, "{this is not json")
+        self.assertEqual(code, 0)
+
+    def test_disabled_config_allows_everything(self):
+        self.write_config(enabled=False, protected_paths=["*"])
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)
+
+    def test_missing_devflow_dir_allows(self):
+        with tempfile.TemporaryDirectory() as bare:
+            payload = json.dumps({"tool_name": "Write",
+                                  "tool_input": {"file_path": str(Path(bare) / "a.py")},
+                                  "cwd": bare})
+            code, _ = devflow.cmd_gate(Path(bare), payload)
+            self.assertEqual(code, 0)
+
+    def test_path_outside_root_allows(self):
+        self.write_config(protected_paths=["*"])
+        code, _ = self.gate(Path(self._tmp.name).parent / "elsewhere" / "x.py")
+        self.assertEqual(code, 0)
+
+    def test_payload_without_file_path_allows(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        code, _ = devflow.cmd_gate(self.root, json.dumps(
+            {"tool_name": "Write", "tool_input": {}, "cwd": str(self.root)}))
+        self.assertEqual(code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -177,6 +177,97 @@ def cmd_finish(root, abandoned=False):
     return record
 
 
+# --- gate (PreToolUse hook) -------------------------------------------------------
+
+DEFAULT_CONFIG = {
+    "enabled": True,
+    # Production = anything not excluded. fnmatch semantics: '*' crosses '/'.
+    "production_globs": ["*"],
+    "exclude_globs": ["tests/*", "test/*", "*test*", "docs/*", "*.md",
+                      ".devflow/*", ".claude/*", "local/*", "specs/*"],
+    "protected_paths": [],
+    "brief_lines": 15,
+}
+
+_RED_DENY_MSG = (
+    "Devflow gate: RED phase not confirmed for this {playbook} run. "
+    "Write the failing test first, then run: "
+    "python .devflow/devflow.py mark red-confirmed --evidence <test-path>. "
+    "(Tests/docs are not gated; quick-tier runs are not gated.)"
+)
+_PROTECTED_DENY_MSG = (
+    "Devflow gate: '{path}' is a PROTECTED path — human authorship required. "
+    "Do not edit it; insert `TODO: [PROTECTED — human authorship required: <what>]` "
+    "at the integration point and continue around it."
+)
+
+
+def load_config(root):
+    cfg = dict(DEFAULT_CONFIG)
+    cp = devflow_dir(root) / "config.json"
+    if cp.exists():
+        try:
+            cfg.update(json.loads(cp.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass  # fail-open: defaults
+    return cfg
+
+
+def _relativize(file_path, root):
+    """Project-relative posix path, or None when outside the project."""
+    try:
+        return Path(file_path).resolve().relative_to(Path(root).resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
+def _match_any(rel_path, patterns):
+    import fnmatch
+    return any(fnmatch.fnmatch(rel_path, pat) for pat in patterns)
+
+
+def cmd_gate(root, raw_stdin):
+    """Decide a PreToolUse call: (0, None) allow · (2, message) deny.
+
+    Order per design D23: fail-open → protected paths → RED phase → allow.
+    Any internal error allows (AC-8) — the gate must never break the harness.
+    """
+    try:
+        cfg = load_config(root)
+        if not cfg.get("enabled", True):
+            return 0, None
+
+        data = json.loads(raw_stdin)
+        tool_input = data.get("tool_input") or {}
+        file_path = tool_input.get("file_path") or tool_input.get("notebook_path")
+        if not file_path:
+            return 0, None
+        rel = _relativize(file_path, root)
+        if rel is None:
+            return 0, None  # outside the project — not ours to gate
+
+        if _match_any(rel, cfg["protected_paths"]):
+            return 2, _PROTECTED_DENY_MSG.format(path=rel)
+
+        state = load_state(root)
+        if state is None or state["playbook"] not in RED_GATED:
+            return 0, None
+        if state.get("tier") == "quick":
+            return 0, None
+
+        seq = PHASES[state["playbook"]]
+        if seq.index(state["phase"]) >= seq.index(RED_PHASE):
+            return 0, None
+        if any(m.get("no_tdd") for m in state["marks"]):
+            return 0, None
+
+        if _match_any(rel, cfg["production_globs"]) and not _match_any(rel, cfg["exclude_globs"]):
+            return 2, _RED_DENY_MSG.format(playbook=state["playbook"])
+        return 0, None
+    except Exception:
+        return 0, None  # fail-open, always
+
+
 # --- CLI -------------------------------------------------------------------------
 
 def resolve_root():
@@ -209,8 +300,16 @@ def main(argv=None):
     p = sub.add_parser("finish", help="close the run into the ledger")
     p.add_argument("--abandoned", action="store_true")
 
+    sub.add_parser("gate", help="PreToolUse hook: read payload on stdin, exit 0/2")
+
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
+
+    if args.command == "gate":
+        code, message = cmd_gate(root, sys.stdin.read())
+        if message:
+            print(message, file=sys.stderr)
+        return code
 
     try:
         if args.command == "start":
