@@ -13,6 +13,7 @@ Exit codes: 0 success/allow · 1 command error · 2 gate denial (reserved).
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -268,6 +269,87 @@ def cmd_gate(root, raw_stdin):
         return 0, None  # fail-open, always
 
 
+# --- brief (SessionStart hook) + stop-check (Stop hook, advisory) -----------------
+
+def cmd_brief(root):
+    """Session orientation lines (AC-2). Every source tolerates absence."""
+    lines = []
+    try:
+        if not devflow_dir(root).exists():
+            return []
+        cap = load_config(root).get("brief_lines", 15)
+
+        state = load_state(root)
+        if state:
+            lines.append(
+                f"[devflow] run {state['run_id']}: {state['playbook']} "
+                f"({state['tier']}) at {state['phase']} — {state['task']}")
+            try:
+                started = datetime.strptime(
+                    state["started"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                days = (datetime.now(timezone.utc) - started).days
+                if days >= 7:
+                    lines.append(f"[devflow] this run has been open for {days} days — "
+                                 "finish it, or abandon it honestly")
+            except Exception:
+                pass
+        else:
+            lines.append("[devflow] no active run")
+
+        try:
+            debts = []
+            for p in sorted((Path(root) / "docs" / "sessions").glob("hotfix-debt-*.md")):
+                try:
+                    head = p.read_text(encoding="utf-8", errors="ignore")[:400]
+                    if re.search(r"^status:\s*open\b", head, re.M):
+                        debts.append(p.name)
+                except OSError:
+                    continue
+            if debts:
+                shown = ", ".join(debts[:3]) + (
+                    f" (+{len(debts) - 3} more)" if len(debts) > 3 else "")
+                lines.append(f"[devflow] OPEN HOTFIX DEBT: {shown} — "
+                             "owed: root-cause fix + regression test (devflow-fix)")
+        except Exception:
+            pass
+
+        for rel, label in (("docs/decisions/index.md", "decisions"),
+                           ("docs/interfaces/index.md", "interfaces")):
+            try:
+                p = Path(root) / rel
+                if p.exists():
+                    entries = [ln.strip()[2:].strip()
+                               for ln in p.read_text(encoding="utf-8",
+                                                     errors="ignore").splitlines()
+                               if ln.strip().startswith("- ")]
+                    if entries:
+                        lines.append(f"[devflow] recent {label}: "
+                                     + " | ".join(reversed(entries[-3:])))
+            except Exception:
+                pass
+
+        return lines[:cap]
+    except Exception:
+        return lines[:15]
+
+
+def cmd_stop_check(root):
+    """Advisory-only Stop output (D23): a dict to print as JSON, or None."""
+    try:
+        state = load_state(root)
+        if state is None or state.get("phase") == "accepted":
+            return None
+        return {"hookSpecificOutput": {
+            "hookEventName": "Stop",
+            "additionalContext": (
+                f"[devflow] run {state['run_id']} is still open at phase "
+                f"'{state['phase']}'. If the work is done, mark the remaining "
+                "phases and `finish`; if pausing intentionally, this is fine."),
+        }}
+    except Exception:
+        return None
+
+
 # --- CLI -------------------------------------------------------------------------
 
 def resolve_root():
@@ -301,6 +383,8 @@ def main(argv=None):
     p.add_argument("--abandoned", action="store_true")
 
     sub.add_parser("gate", help="PreToolUse hook: read payload on stdin, exit 0/2")
+    sub.add_parser("brief", help="SessionStart hook: print orientation lines")
+    sub.add_parser("stop-check", help="Stop hook: advisory JSON when a run is open")
 
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
@@ -310,6 +394,16 @@ def main(argv=None):
         if message:
             print(message, file=sys.stderr)
         return code
+    if args.command == "brief":
+        lines = cmd_brief(root)
+        if lines:
+            print("\n".join(lines))
+        return 0
+    if args.command == "stop-check":
+        out = cmd_stop_check(root)
+        if out:
+            print(json.dumps(out, ensure_ascii=False))
+        return 0
 
     try:
         if args.command == "start":

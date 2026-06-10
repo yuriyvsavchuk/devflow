@@ -294,5 +294,75 @@ class TestGateFailOpen(GateBase):
         self.assertEqual(code, 0)
 
 
+class TestBrief(StateCoreBase):
+    def write_debt(self, slug, status):
+        d = self.root / "docs" / "sessions"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"hotfix-debt-{slug}.md").write_text(
+            f"---\ntype: hotfix-debt\nstatus: {status}\ndate: 2026-06-10\n---\n\n# Hotfix: {slug}\n",
+            encoding="utf-8")
+
+    def write_index(self, rel, entries):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# Index\n\n" + "\n".join(f"- {e}" for e in entries) + "\n",
+                     encoding="utf-8")
+
+    def test_brief_with_everything(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="parser bug")
+        devflow.cmd_mark(self.root, "repro-confirmed")
+        self.write_debt("checkout-500s", "open")
+        self.write_debt("old-one", "closed")
+        self.write_index("docs/decisions/index.md", ["0001 a", "0002 b", "0003 c", "0004 d"])
+        self.write_index("docs/interfaces/index.md", ["users-api v2"])
+        lines = devflow.cmd_brief(self.root)
+        text = "\n".join(lines)
+        self.assertLessEqual(len(lines), devflow.DEFAULT_CONFIG["brief_lines"])
+        self.assertIn("fix", text)
+        self.assertIn("repro-confirmed", text)
+        self.assertIn("checkout-500s", text)
+        self.assertNotIn("old-one", text)          # closed debt not shown
+        self.assertIn("0004 d", text)               # newest decision shown
+        self.assertNotIn("0001 a", text)            # older than last 3 not shown
+        self.assertIn("users-api v2", text)
+
+    def test_brief_tolerates_total_absence(self):
+        bare_lines = devflow.cmd_brief(self.root)   # .devflow exists, nothing else
+        self.assertIsInstance(bare_lines, list)
+        with tempfile.TemporaryDirectory() as bare:
+            self.assertEqual(devflow.cmd_brief(Path(bare)), [])  # no .devflow at all
+
+    def test_brief_stale_run_nudge(self):
+        devflow.cmd_start(self.root, "build", tier="standard", task="t")
+        st = devflow.load_state(self.root)
+        st["started"] = "2026-05-01T00:00:00Z"
+        devflow.save_state(self.root, st)
+        text = "\n".join(devflow.cmd_brief(self.root))
+        self.assertIn("open for", text)
+
+    def test_brief_never_raises_on_garbage_sources(self):
+        (self.root / "docs" / "sessions").mkdir(parents=True)
+        (self.root / "docs" / "sessions" / "hotfix-debt-x.md").write_bytes(b"\xff\xfe garbage")
+        lines = devflow.cmd_brief(self.root)
+        self.assertIsInstance(lines, list)
+
+
+class TestStopCheck(StateCoreBase):
+    def test_open_run_yields_advisory(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        out = devflow.cmd_stop_check(self.root)
+        self.assertIsNotNone(out)
+        self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "Stop")
+        self.assertIn("open", out["hookSpecificOutput"]["additionalContext"])
+
+    def test_accepted_run_silent(self):
+        devflow.cmd_start(self.root, "spike", tier="quick", task="t")
+        devflow.cmd_mark(self.root, "accepted")
+        self.assertIsNone(devflow.cmd_stop_check(self.root))
+
+    def test_no_run_silent(self):
+        self.assertIsNone(devflow.cmd_stop_check(self.root))
+
+
 if __name__ == "__main__":
     unittest.main()
