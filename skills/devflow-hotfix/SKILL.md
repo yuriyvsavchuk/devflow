@@ -48,6 +48,10 @@ The debt is closed only by a `devflow-fix` run: root cause, failing regression t
 
 *(Phase 2 wires open debt records into the session auto-brief; until then, check `docs/sessions/` for `status: open` debt at session start as part of the session ritual.)*
 
+## Exit
+
+The incident is closed for this playbook when the mitigation is shipped and verified **and** the debt record exists with `status: open`. The work is fully done only when the follow-up `devflow-fix` run closes the debt.
+
 ## Boundaries
 
 - Does: mitigate, verify, ship, record debt, route the follow-up.
