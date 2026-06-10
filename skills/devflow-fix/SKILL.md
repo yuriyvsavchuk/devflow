@@ -8,6 +8,8 @@ framework: devflow
 
 The discipline of this playbook is the same at every tier: **no fix before the failure is reproduced, and no fix before a failing test encodes the expected behavior.** Tiers change who does each step, not their order.
 
+**Rails:** when `.devflow/` exists, record each phase as you pass it (`python .devflow/devflow.py mark <phase>`) — at standard+ tier the edit gate mechanically denies production-file edits until `red-confirmed` is marked. Phases: `repro-confirmed → red-confirmed → fix-applied → review-passed → accepted`, then `finish`.
+
 ## Steps
 
 ### 1. Reproduce and triage
@@ -20,6 +22,7 @@ Write the test that fails for the reported reason and will pass once behavior is
 
 - When a contract exists in `docs/interfaces/`, the test asserts the **contracted** behavior — not the previously observed broken behavior.
 - If triage reveals the contract itself is wrong (wrong error shape, wrong field type), correct the contract first, then write the test against the corrected contract.
+- Rails: `mark red-confirmed --evidence <test-path>` — this is what unlocks production edits.
 
 ### 3. Minimal fix (GREEN)
 

@@ -65,6 +65,22 @@ rm -f  ~/.claude/agents/research.agent.md ~/.claude/agents/api-researcher.agent.
 - **The supporting skills:** `writing-plans`, `test-driven-development`, `systematic-debugging`, `poc-retrospective`, `session-continuity`, `finishing-a-development-branch`, `using-git-worktrees`, and the rest are still there and still invoked by the playbooks.
 - **The discipline:** reproduce before fixing, test before merging, profile before optimizing, retrospective before closing a spike, decision records before implementation.
 
-## Coming in Phase 2 (rails)
+## Phase 2 upgrade — the rails (shipped)
 
-A single-file CLI (`devflow.py`) with run state in `.devflow/`, a SessionStart auto-brief (orientation + open hotfix debt + recent decisions), a PreToolUse gate that holds edits until the failing-test phase is confirmed in Fix/Build runs, protected paths, and a run ledger feeding `devflow stats`. CI snippet packs follow in Phase 3.
+Pull the latest framework, then per project:
+
+```sh
+python devflow.py init              # one command: .devflow/ + hooks (merge-safe, idempotent, .bak before first change)
+python .devflow/devflow.py doctor   # verify: python, Git Bash (Windows), hooks wired, version match
+```
+
+What changes day-to-day:
+
+- **Every session starts oriented** — the SessionStart hook injects the brief (open run + phase, open hotfix debt, latest decisions); it re-injects after context compaction.
+- **The TDD gate is mechanical** — in `fix`/`build` runs at standard+ tier, production edits are denied until `mark red-confirmed --evidence <test>`; tests and docs are never gated; `build` may record an explicit exception (`mark implemented --no-tdd "<why>"`).
+- **Protected paths** — list human-only files (auth, billing, LICENSE…) in `.devflow/config.json` → the agent is denied unconditionally and instructed to leave a `TODO: [PROTECTED — human authorship required]`.
+- **Runs leave evidence** — `python .devflow/devflow.py stats` shows runs, loop-backs, abandonment, durations.
+
+Prerequisites: Python 3 on PATH; Git Bash on Windows. Escape hatch: `"enabled": false` in `.devflow/config.json` — or delete `.devflow/` — and nothing is ever blocked (the rails are fail-open at every layer). Install at the directory you open Claude Code in — that's the project root the hooks see.
+
+CI snippet packs follow in Phase 3.
