@@ -350,6 +350,134 @@ def cmd_stop_check(root):
         return None
 
 
+# --- init + doctor -----------------------------------------------------------------
+
+_HOOK_CMD = 'python "$CLAUDE_PROJECT_DIR/.devflow/devflow.py" {cmd}'
+HOOK_WIRING = (
+    ("SessionStart", "startup|resume|compact", "brief"),
+    ("PreToolUse", "Edit|Write|MultiEdit|NotebookEdit", "gate"),
+    ("Stop", None, "stop-check"),
+)
+_GITIGNORE_LINES = (".devflow/state.json", ".devflow/state.json.corrupt",
+                    ".devflow/runs.jsonl")
+
+
+def cmd_init(root):
+    """Scaffold .devflow/, copy self, wire hooks merge-safe + idempotent (AC-1)."""
+    root = Path(root)
+    summary = []
+    dd = devflow_dir(root)
+    dd.mkdir(parents=True, exist_ok=True)
+
+    cfg_path = dd / "config.json"
+    if not cfg_path.exists():
+        _atomic_write(cfg_path, json.dumps(DEFAULT_CONFIG, indent=2) + "\n")
+        summary.append("config.json created (defaults)")
+
+    src = Path(__file__).resolve()
+    dest = dd / "devflow.py"
+    if src != dest.resolve():
+        dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        summary.append(f"devflow.py {VERSION} copied into .devflow/")
+
+    sp = root / ".claude" / "settings.json"
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    original_text = sp.read_text(encoding="utf-8") if sp.exists() else None
+    try:
+        settings = json.loads(original_text) if original_text else {}
+    except json.JSONDecodeError:
+        raise DevflowError(f"{sp} is not valid JSON — fix it before init")
+    hooks = settings.setdefault("hooks", {})
+    modified = False
+    for event, matcher, cmd in HOOK_WIRING:
+        entries = hooks.setdefault(event, [])
+        cmd_str = _HOOK_CMD.format(cmd=cmd)
+        wired = any(h.get("command") == cmd_str
+                    for entry in entries for h in entry.get("hooks", []))
+        if not wired:
+            entry = {"hooks": [{"type": "command", "command": cmd_str, "timeout": 10}]}
+            if matcher:
+                entry["matcher"] = matcher
+            entries.append(entry)
+            modified = True
+    if modified:
+        bak = sp.with_suffix(".json.bak")
+        if original_text is not None and not bak.exists():
+            bak.write_text(original_text, encoding="utf-8")
+        _atomic_write(sp, json.dumps(settings, indent=2) + "\n")
+        summary.append("hooks wired into .claude/settings.json"
+                       + (" (backup: settings.json.bak)" if original_text else ""))
+
+    gi = root / ".gitignore"
+    gi_text = gi.read_text(encoding="utf-8") if gi.exists() else ""
+    existing_lines = {ln.strip() for ln in gi_text.splitlines()}
+    missing = [ln for ln in _GITIGNORE_LINES if ln not in existing_lines]
+    if missing:
+        if gi_text and not gi_text.endswith("\n"):
+            gi_text += "\n"
+        gi_text += "\n".join(missing) + "\n"
+        _atomic_write(gi, gi_text)
+        summary.append(".gitignore updated (state + ledger stay local)")
+
+    return summary or ["already initialized — nothing to do"]
+
+
+def cmd_doctor(root):
+    """Install health checks: list of (name, ok, detail) (AC-6)."""
+    import shutil
+    root = Path(root)
+    checks = []
+
+    checks.append(("python", True, sys.executable))
+    bash_ok = shutil.which("bash") is not None or sys.platform != "win32"
+    checks.append(("bash (hook shell on Windows)", bash_ok,
+                   shutil.which("bash") or "not found — install Git for Windows"))
+
+    dd = devflow_dir(root)
+    try:
+        dd.mkdir(parents=True, exist_ok=True)
+        probe = dd / ".write-probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        checks.append((".devflow writable", True, str(dd)))
+    except OSError as exc:
+        checks.append((".devflow writable", False, repr(exc)))
+
+    try:
+        load_config(root)
+        checks.append(("config parses", True, str(dd / "config.json")))
+    except Exception as exc:  # load_config is fail-open; belt-and-suspenders
+        checks.append(("config parses", False, repr(exc)))
+
+    sp = root / ".claude" / "settings.json"
+    wired = False
+    if sp.exists():
+        try:
+            settings = json.loads(sp.read_text(encoding="utf-8"))
+            commands = {h.get("command")
+                        for entries in settings.get("hooks", {}).values()
+                        for entry in entries for h in entry.get("hooks", [])}
+            wired = all(_HOOK_CMD.format(cmd=cmd) in commands
+                        for _, _, cmd in HOOK_WIRING)
+        except (OSError, json.JSONDecodeError):
+            wired = False
+    checks.append(("hooks wired", wired,
+                   str(sp) if wired else "missing hooks — run init"))
+
+    copy = dd / "devflow.py"
+    if copy.exists():
+        m = re.search(r'^VERSION = "([^"]+)"', copy.read_text(encoding="utf-8"),
+                      re.M)
+        copy_ver = m.group(1) if m else "unknown"
+        checks.append(("version match", copy_ver == VERSION,
+                       f"copy={copy_ver} running={VERSION}"
+                       + ("" if copy_ver == VERSION else " — run init to upgrade")))
+    else:
+        checks.append(("version match", False, "no .devflow/devflow.py — run init"))
+
+    return checks
+
+
 # --- CLI -------------------------------------------------------------------------
 
 def resolve_root():
@@ -385,6 +513,8 @@ def main(argv=None):
     sub.add_parser("gate", help="PreToolUse hook: read payload on stdin, exit 0/2")
     sub.add_parser("brief", help="SessionStart hook: print orientation lines")
     sub.add_parser("stop-check", help="Stop hook: advisory JSON when a run is open")
+    sub.add_parser("init", help="scaffold .devflow/ and wire hooks (merge-safe)")
+    sub.add_parser("doctor", help="install health checks")
 
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
@@ -418,6 +548,14 @@ def main(argv=None):
             rec = cmd_finish(root, abandoned=args.abandoned)
             print(f"run {rec['run_id']} {rec['status']} "
                   f"({rec['marks']} marks, {rec['loop_backs']} loop-backs)")
+        elif args.command == "init":
+            for line in cmd_init(root):
+                print(line)
+        elif args.command == "doctor":
+            checks = cmd_doctor(root)
+            for name, ok, detail in checks:
+                print(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}")
+            return 0 if all(ok for _, ok, _ in checks) else 1
     except DevflowError as exc:
         print(f"devflow: {exc}", file=sys.stderr)
         return 1

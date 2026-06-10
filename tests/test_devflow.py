@@ -364,5 +364,103 @@ class TestStopCheck(StateCoreBase):
         self.assertIsNone(devflow.cmd_stop_check(self.root))
 
 
+class TestInitDoctor(unittest.TestCase):
+    """init starts from a bare project root — no pre-made .devflow."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def settings(self):
+        return json.loads(
+            (self.root / ".claude" / "settings.json").read_text(encoding="utf-8"))
+
+    def test_init_scaffolds_everything(self):
+        devflow.cmd_init(self.root)
+        self.assertTrue((self.root / ".devflow" / "devflow.py").exists())
+        cfg = json.loads(
+            (self.root / ".devflow" / "config.json").read_text(encoding="utf-8"))
+        self.assertTrue(cfg["enabled"])
+        hooks = self.settings()["hooks"]
+        for event in ("SessionStart", "PreToolUse", "Stop"):
+            self.assertIn(event, hooks)
+        pre = hooks["PreToolUse"][0]
+        self.assertEqual(pre["matcher"], "Edit|Write|MultiEdit|NotebookEdit")
+        self.assertIn(".devflow/devflow.py", pre["hooks"][0]["command"])
+        self.assertEqual(hooks["SessionStart"][0]["matcher"], "startup|resume|compact")
+
+    def test_init_preserves_existing_settings_and_is_idempotent(self):
+        sp = self.root / ".claude" / "settings.json"
+        sp.parent.mkdir(parents=True)
+        pre_existing = {
+            "permissions": {"allow": ["Bash(npm:*)"]},
+            "hooks": {"PreToolUse": [
+                {"matcher": "Bash",
+                 "hooks": [{"type": "command", "command": "echo custom"}]}]},
+        }
+        sp.write_text(json.dumps(pre_existing, indent=2), encoding="utf-8")
+
+        devflow.cmd_init(self.root)
+        merged = self.settings()
+        self.assertEqual(merged["permissions"]["allow"], ["Bash(npm:*)"])
+        pre_entries = merged["hooks"]["PreToolUse"]
+        self.assertEqual(len(pre_entries), 2)  # custom + ours
+        self.assertEqual(pre_entries[0]["hooks"][0]["command"], "echo custom")
+        self.assertTrue((self.root / ".claude" / "settings.json.bak").exists())
+        bak = json.loads((self.root / ".claude" / "settings.json.bak").read_text(
+            encoding="utf-8"))
+        self.assertNotIn("SessionStart", bak.get("hooks", {}))
+
+        first = sp.read_text(encoding="utf-8")
+        devflow.cmd_init(self.root)  # second run
+        self.assertEqual(sp.read_text(encoding="utf-8"), first)  # byte-identical
+
+    def test_init_gitignore_append_without_duplicates(self):
+        (self.root / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
+        devflow.cmd_init(self.root)
+        devflow.cmd_init(self.root)
+        gi_lines = (self.root / ".gitignore").read_text(encoding="utf-8").splitlines()
+        self.assertIn("node_modules/", gi_lines)
+        self.assertEqual(gi_lines.count(".devflow/state.json"), 1)
+        self.assertEqual(gi_lines.count(".devflow/runs.jsonl"), 1)
+
+    def test_init_creates_gitignore_when_absent(self):
+        devflow.cmd_init(self.root)
+        gi = (self.root / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn(".devflow/state.json", gi)
+
+    def test_init_does_not_overwrite_user_config(self):
+        (self.root / ".devflow").mkdir()
+        (self.root / ".devflow" / "config.json").write_text(
+            json.dumps({"enabled": False}), encoding="utf-8")
+        devflow.cmd_init(self.root)
+        cfg = json.loads(
+            (self.root / ".devflow" / "config.json").read_text(encoding="utf-8"))
+        self.assertFalse(cfg["enabled"])
+
+    def test_doctor_all_pass_after_init(self):
+        devflow.cmd_init(self.root)
+        checks = devflow.cmd_doctor(self.root)
+        failures = [c for c in checks if not c[1]]
+        self.assertEqual(failures, [], f"doctor failures: {failures}")
+
+    def test_doctor_detects_version_skew(self):
+        devflow.cmd_init(self.root)
+        copy = self.root / ".devflow" / "devflow.py"
+        copy.write_text(copy.read_text(encoding="utf-8").replace(
+            f'VERSION = "{devflow.VERSION}"', 'VERSION = "0.0.1"'), encoding="utf-8")
+        checks = dict((c[0], c[1]) for c in devflow.cmd_doctor(self.root))
+        self.assertFalse(checks["version match"])
+
+    def test_doctor_detects_missing_hooks(self):
+        devflow.cmd_init(self.root)
+        (self.root / ".claude" / "settings.json").unlink()
+        checks = dict((c[0], c[1]) for c in devflow.cmd_doctor(self.root))
+        self.assertFalse(checks["hooks wired"])
+
+
 if __name__ == "__main__":
     unittest.main()
