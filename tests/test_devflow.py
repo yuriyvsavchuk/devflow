@@ -462,5 +462,45 @@ class TestInitDoctor(unittest.TestCase):
         self.assertFalse(checks["hooks wired"])
 
 
+class TestStats(StateCoreBase):
+    def seed_ledger(self):
+        records = [
+            {"run_id": "fix-1", "playbook": "fix", "tier": "standard", "task": "a",
+             "started": "2026-06-10T10:00:00Z", "finished": "2026-06-10T10:30:00Z",
+             "status": "completed", "loop_backs": 2, "marks": 5},
+            {"run_id": "fix-2", "playbook": "fix", "tier": "quick", "task": "b",
+             "started": "2026-06-10T11:00:00Z", "finished": "2026-06-10T11:10:00Z",
+             "status": "completed", "loop_backs": 0, "marks": 3},
+            {"run_id": "build-1", "playbook": "build", "tier": "standard", "task": "c",
+             "started": "2026-06-10T12:00:00Z", "finished": "2026-06-10T12:20:00Z",
+             "status": "abandoned", "loop_backs": 1, "marks": 2},
+            {"run_id": "spike-1", "playbook": "spike", "tier": "quick", "task": "d",
+             "started": "2026-06-10T13:00:00Z", "finished": "2026-06-10T13:40:00Z",
+             "status": "completed", "loop_backs": 0, "marks": 2},
+        ]
+        lp = self.root / ".devflow" / "runs.jsonl"
+        lp.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+
+    def test_stats_aggregates(self):
+        self.seed_ledger()
+        text = devflow.cmd_stats(self.root)
+        self.assertIn("runs: 4", text)
+        self.assertIn("completed: 3", text)
+        self.assertIn("abandoned: 1", text)
+        self.assertIn("loop-backs: 3", text)
+        self.assertIn("fix", text)
+        self.assertIn("build", text)
+        self.assertRegex(text, r"mean duration: 25(\.0)? min")  # (30+10+20+40)/4
+
+    def test_stats_empty(self):
+        self.assertIn("no runs", devflow.cmd_stats(self.root).lower())
+
+    def test_stats_tolerates_garbage_lines(self):
+        self.seed_ledger()
+        with open(self.root / ".devflow" / "runs.jsonl", "a", encoding="utf-8") as fh:
+            fh.write("{broken\n")
+        self.assertIn("runs: 4", devflow.cmd_stats(self.root))
+
+
 if __name__ == "__main__":
     unittest.main()

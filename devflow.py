@@ -350,6 +350,53 @@ def cmd_stop_check(root):
         return None
 
 
+# --- stats ---------------------------------------------------------------------
+
+def cmd_stats(root):
+    """Plain-text aggregates from the run ledger (AC-5)."""
+    lp = ledger_path(root)
+    records = []
+    if lp.exists():
+        for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    if not records:
+        return "no runs recorded yet"
+
+    def minutes(rec):
+        try:
+            fmt = "%Y-%m-%dT%H:%M:%SZ"
+            return (datetime.strptime(rec["finished"], fmt)
+                    - datetime.strptime(rec["started"], fmt)).total_seconds() / 60
+        except (KeyError, ValueError):
+            return None
+
+    completed = sum(1 for r in records if r.get("status") == "completed")
+    abandoned = sum(1 for r in records if r.get("status") == "abandoned")
+    loop_backs = sum(r.get("loop_backs", 0) for r in records)
+    durations = [m for m in (minutes(r) for r in records) if m is not None]
+
+    by_playbook = {}
+    for r in records:
+        key = f"{r.get('playbook', '?')}/{r.get('tier', '?')}"
+        by_playbook[key] = by_playbook.get(key, 0) + 1
+
+    lines = [
+        f"runs: {len(records)}  completed: {completed}  abandoned: {abandoned}",
+        f"loop-backs: {loop_backs}",
+    ]
+    if durations:
+        lines.append(f"mean duration: {sum(durations) / len(durations):.1f} min")
+    lines.append("by playbook/tier:")
+    for key in sorted(by_playbook):
+        lines.append(f"  {key}: {by_playbook[key]}")
+    return "\n".join(lines)
+
+
 # --- init + doctor -----------------------------------------------------------------
 
 _HOOK_CMD = 'python "$CLAUDE_PROJECT_DIR/.devflow/devflow.py" {cmd}'
@@ -515,6 +562,7 @@ def main(argv=None):
     sub.add_parser("stop-check", help="Stop hook: advisory JSON when a run is open")
     sub.add_parser("init", help="scaffold .devflow/ and wire hooks (merge-safe)")
     sub.add_parser("doctor", help="install health checks")
+    sub.add_parser("stats", help="aggregates from the run ledger")
 
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
@@ -556,6 +604,8 @@ def main(argv=None):
             for name, ok, detail in checks:
                 print(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}")
             return 0 if all(ok for _, ok, _ in checks) else 1
+        elif args.command == "stats":
+            print(cmd_stats(root))
     except DevflowError as exc:
         print(f"devflow: {exc}", file=sys.stderr)
         return 1
