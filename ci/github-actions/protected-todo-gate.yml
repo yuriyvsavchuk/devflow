@@ -1,0 +1,48 @@
+# devflow: Protected-TODO Gate
+# Template — copy to: .github/workflows/protected-todo-gate.yml in your project repository.
+#
+# When the rails deny the agent an edit on a protected path, the agent leaves
+#   TODO: [PROTECTED — human authorship required: <what>]
+# at the integration point and routes around it. That marker means a human owes
+# code. This gate FAILS the PR while any such marker is being ADDED — protected
+# work must be completed by a human before merge. (Generalizes the devflow-team
+# Red-zone TODO gate for the public framework.)
+#
+# Behaviour:
+# - This one is a gate by design: unresolved markers in added lines → job fails.
+# - Only ADDED lines count; removing or merely moving context lines never trips it.
+# - No rails installation required — the gate greps the diff, nothing else.
+#
+# Prerequisites: none beyond actions/checkout.
+
+name: devflow — Protected TODO Gate
+
+on:
+  pull_request:
+
+jobs:
+  protected-todos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail on added PROTECTED markers
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"   # guarantee the base ref locally
+          ADDED=$(git diff "origin/$BASE_REF"...HEAD | grep -E '^\+.*TODO: \[PROTECTED' || true)
+          if [ -n "$ADDED" ]; then
+            echo "Unresolved protected-path work is being merged:"
+            echo "$ADDED"
+            echo
+            echo "A human must complete these sections before merge (see README — Rails / protected paths)."
+            exit 1
+          fi
+          echo "No added PROTECTED markers — gate clear."

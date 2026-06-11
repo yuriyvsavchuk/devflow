@@ -4,9 +4,13 @@ Run:  python -m unittest discover tests -v   (from the repo root)
 """
 
 import json
+import os
+import re
+import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -386,6 +390,23 @@ class TestStopCheck(StateCoreBase):
         self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "Stop")
         self.assertIn("open", out["hookSpecificOutput"]["additionalContext"])
 
+    def test_advisory_debounced_within_an_hour(self):
+        """Live finding: each advisory re-invokes the model -> nudge loop.
+        Only the first stop in an hour may nudge."""
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        first = devflow.cmd_stop_check(self.root)
+        self.assertIsNotNone(first)
+        second = devflow.cmd_stop_check(self.root)
+        self.assertIsNone(second)
+
+    def test_advisory_returns_after_debounce_window(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        devflow.cmd_stop_check(self.root)
+        st = devflow.load_state(self.root)
+        st["stop_nudged_epoch"] = st["stop_nudged_epoch"] - 3700
+        devflow.save_state(self.root, st)
+        self.assertIsNotNone(devflow.cmd_stop_check(self.root))
+
     def test_accepted_run_silent(self):
         devflow.cmd_start(self.root, "spike", tier="quick", task="t")
         devflow.cmd_mark(self.root, "accepted")
@@ -540,6 +561,477 @@ class TestBashCheck(unittest.TestCase):
                                     candidates=[r"C:\ghost\bash.exe"],
                                     version_runner=boom)
         self.assertFalse(ok)
+
+
+class VerifyBase(StateCoreBase):
+    """Phase 3: verify chain tests. findings = [(check, msg)], notes = [(check, reason)]."""
+
+    def write_spec(self, name, status="agreed", acs=(1, 2)):
+        d = self.root / "docs" / "specs"
+        d.mkdir(parents=True, exist_ok=True)
+        ac_lines = "\n".join(f"- AC-{n}: criterion {n}" for n in acs)
+        (d / name).write_text(
+            f"---\ntype: spec\nstatus: {status}\ndate: 2026-06-11\n---\n\n"
+            f"# Spec {name}\n\n## Acceptance criteria\n{ac_lines}\n",
+            encoding="utf-8")
+
+    def write_plan(self, name, spec_ref, ac_refs):
+        d = self.root / "docs" / "plans"
+        d.mkdir(parents=True, exist_ok=True)
+        refs = " and ".join(f"AC-{n}" for n in ac_refs)
+        (d / name).write_text(
+            f"# Plan {name}\n\nPer spec docs/specs/{spec_ref} this covers {refs}.\n",
+            encoding="utf-8")
+
+    def run_verify(self, **kw):
+        return devflow.cmd_verify(self.root, **kw)
+
+    def findings_for(self, check, findings):
+        return [m for c, m in findings if c == check]
+
+    def notes_for(self, check, notes):
+        return [m for c, m in notes if c == check]
+
+
+class TestVerifySpecLinks(VerifyBase):
+    def test_no_specs_dir_skips(self):
+        findings, notes = self.run_verify()
+        self.assertTrue(self.notes_for("spec-links", notes))
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_agreed_spec_without_acs_flagged(self):
+        self.write_spec("empty.md", status="agreed", acs=())
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-links", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("empty.md", hits[0])
+
+    def test_draft_spec_without_acs_clean(self):
+        self.write_spec("draft.md", status="draft", acs=())
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_plan_referencing_existing_acs_clean(self):
+        self.write_spec("s.md", acs=(1, 2, 3))
+        self.write_plan("p.md", "s.md", (1, 3))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_plan_referencing_missing_ac_flagged(self):
+        self.write_spec("s.md", acs=(1, 2))
+        self.write_plan("p.md", "s.md", (1, 7))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-links", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-7", hits[0])
+        self.assertIn("p.md", hits[0])
+
+    def test_plan_without_spec_reference_ignored(self):
+        self.write_spec("s.md", acs=(1,))
+        (self.root / "docs" / "plans").mkdir(parents=True, exist_ok=True)
+        (self.root / "docs" / "plans" / "free.md").write_text(
+            "# Standalone plan, no spec, mentions AC-9 informally\n", encoding="utf-8")
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_check_crash_becomes_note_never_raises(self):
+        (self.root / "docs" / "specs").mkdir(parents=True)
+        (self.root / "docs" / "specs" / "binary.md").write_bytes(b"\xff\xfe\x00garbage")
+        findings, notes = self.run_verify()  # must not raise
+        self.assertIsInstance(findings, list)
+
+    def test_plan_spanning_two_specs_clean(self):
+        """Review Blocking-1: a plan may reference several specs — ACs must be
+        unioned across all of them, not checked against the first only."""
+        self.write_spec("a.md", acs=(1, 2, 3))
+        self.write_spec("b.md", acs=(4, 5, 6))
+        d = self.root / "docs" / "plans"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "multi.md").write_text(
+            "Per docs/specs/a.md this covers AC-1 and AC-3; "
+            "per docs/specs/b.md it also covers AC-4 and AC-6.\n",
+            encoding="utf-8")
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_plan_spanning_two_specs_still_flags_missing(self):
+        self.write_spec("a.md", acs=(1,))
+        self.write_spec("b.md", acs=(4,))
+        d = self.root / "docs" / "plans"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "multi.md").write_text(
+            "Per docs/specs/a.md and docs/specs/b.md covering AC-1, AC-4, AC-9.\n",
+            encoding="utf-8")
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-links", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-9", hits[0])
+
+    def test_genuinely_crashing_check_becomes_note(self):
+        """The dispatch loop's crash containment, exercised for real."""
+        def boom(root, cfg, window):
+            raise RuntimeError("boom")
+        original = devflow._VERIFY_CHECKS
+        devflow._VERIFY_CHECKS = list(original) + [("boom-check", boom)]
+        try:
+            findings, notes = self.run_verify()
+            self.assertTrue(any(c == "boom-check" and "failed safely" in m
+                                for c, m in notes))
+        finally:
+            devflow._VERIFY_CHECKS = original
+
+
+class GitFixtureBase(VerifyBase):
+    """Real temp git repos with controlled commit timestamps."""
+
+    LEDGER_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+    def git(self, *args, env_extra=None):
+        env = dict(os.environ)
+        if env_extra:
+            env.update(env_extra)
+        subprocess.run(["git", "-C", str(self.root), *args],
+                       check=True, capture_output=True, env=env)
+
+    def init_repo(self):
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@test.local")
+        self.git("config", "user.name", "tester")
+
+    def commit_at(self, relpath, when_utc):
+        p = self.root / relpath
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"content at {when_utc.isoformat()}\n", encoding="utf-8")
+        stamp = f"@{int(when_utc.timestamp())} +0000"
+        self.git("add", relpath)
+        self.git("commit", "-q", "-m", f"commit {relpath}",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+
+    def seed_run(self, started_utc, finished_utc):
+        rec = {"run_id": "r", "playbook": "build", "tier": "standard", "task": "t",
+               "started": started_utc.strftime(self.LEDGER_FMT),
+               "finished": finished_utc.strftime(self.LEDGER_FMT),
+               "status": "completed", "loop_backs": 0, "marks": 1}
+        with open(self.root / ".devflow" / "runs.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+
+    @staticmethod
+    def now():
+        return datetime.now(timezone.utc)
+
+
+class TestVerifyOutOfBand(GitFixtureBase):
+    def test_commit_inside_run_window_clean(self):
+        self.init_repo()
+        t = self.now() - timedelta(hours=5)
+        self.commit_at("src/a.py", t)
+        self.seed_run(t - timedelta(hours=1), t + timedelta(hours=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("out-of-band", findings))
+
+    def test_commit_outside_all_windows_flagged(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=2))
+        far = self.now() - timedelta(days=10)
+        self.seed_run(far, far + timedelta(hours=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("out-of-band", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("1 of 1", hits[0])
+
+    def test_open_run_covers_recent_commit(self):
+        self.init_repo()
+        devflow.cmd_start(self.root, "build", tier="standard", task="t")
+        self.commit_at("src/b.py", self.now())
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("out-of-band", findings))
+
+    def test_non_git_root_skips(self):
+        findings, notes = self.run_verify()
+        self.assertTrue(any("git" in n.lower()
+                            for n in self.notes_for("out-of-band", notes)))
+
+    def test_no_runs_uses_manual_framing(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("out-of-band", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("manual", hits[0])
+
+    def test_empty_repo_clean(self):
+        self.init_repo()  # no commits at all
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("out-of-band", findings))
+
+
+class TestVerifyContractStale(GitFixtureBase):
+    def set_config(self, **overrides):
+        cfg = dict(devflow.DEFAULT_CONFIG)
+        cfg.update(overrides)
+        (self.root / ".devflow" / "config.json").write_text(
+            json.dumps(cfg), encoding="utf-8")
+
+    def test_stale_contract_flagged(self):
+        self.init_repo()
+        self.commit_at("docs/interfaces/users-api.yaml", self.now() - timedelta(days=3))
+        self.commit_at("src/api/users.py", self.now() - timedelta(days=1))
+        self.set_config(contract_map={"docs/interfaces/users-api.yaml": ["src/api/*"]})
+        findings, _ = self.run_verify()
+        hits = self.findings_for("contract-stale", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("users-api.yaml", hits[0])
+
+    def test_fresh_contract_clean(self):
+        self.init_repo()
+        self.commit_at("src/api/users.py", self.now() - timedelta(days=3))
+        self.commit_at("docs/interfaces/users-api.yaml", self.now() - timedelta(days=1))
+        self.set_config(contract_map={"docs/interfaces/users-api.yaml": ["src/api/*"]})
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("contract-stale", findings))
+
+    def test_unmapped_contract_noted(self):
+        self.init_repo()
+        self.commit_at("docs/interfaces/orders-api.yaml", self.now() - timedelta(days=1))
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("contract-stale", findings))
+        self.assertTrue(any("contract_map" in n
+                            for n in self.notes_for("contract-stale", notes)))
+
+    def test_no_interfaces_dir_skips(self):
+        self.init_repo()
+        _, notes = self.run_verify()
+        self.assertTrue(self.notes_for("contract-stale", notes))
+
+
+class TestVerifyAdrStale(GitFixtureBase):
+    def write_adr(self, name, status="Accepted", relates_to="src/auth/*",
+                  when=None):
+        rel_line = f"**Relates-to:** {relates_to}\n" if relates_to else ""
+        content = (f"# ADR-{name[:4]}: demo decision\n\n"
+                   f"**Date:** 2026-06-01\n**Status:** {status}\n{rel_line}\n"
+                   f"## Context\n\nx\n")
+        p = self.root / "docs" / "decisions" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        stamp = f"@{int((when or self.now()).timestamp())} +0000"
+        self.git("add", f"docs/decisions/{name}")
+        self.git("commit", "-q", "-m", f"adr {name}",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+
+    def test_stale_adr_flagged(self):
+        self.init_repo()
+        self.write_adr("0001-auth-model.md", when=self.now() - timedelta(days=5))
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("adr-stale", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("0001-auth-model.md", hits[0])
+
+    def test_adr_newer_than_churn_clean(self):
+        self.init_repo()
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=5))
+        self.write_adr("0001-auth-model.md", when=self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+
+    def test_accepted_without_relates_to_noted(self):
+        self.init_repo()
+        self.write_adr("0002-naming.md", relates_to=None,
+                       when=self.now() - timedelta(days=2))
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+        self.assertTrue(any("Relates-to" in n
+                            for n in self.notes_for("adr-stale", notes)))
+
+    def test_superseded_ignored(self):
+        self.init_repo()
+        self.write_adr("0003-old.md", status="Superseded",
+                       when=self.now() - timedelta(days=5))
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+
+    def test_no_adrs_skips(self):
+        self.init_repo()
+        _, notes = self.run_verify()
+        self.assertTrue(self.notes_for("adr-stale", notes))
+
+    def test_blank_relates_to_counted_not_silently_skipped(self):
+        """Review NB-2: '**Relates-to:** ' with no globs must surface in the
+        without-Relates-to note, never vanish."""
+        self.init_repo()
+        self.write_adr("0004-blank.md", relates_to=" ",
+                       when=self.now() - timedelta(days=2))
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+        self.assertTrue(any("1 Accepted ADR" in n
+                            for n in self.notes_for("adr-stale", notes)))
+
+    def test_plain_title_case_relates_to_matched(self):
+        """Review NB-4: 'Relates-to:' without bold markers must also count."""
+        self.init_repo()
+        p = self.root / "docs" / "decisions" / "0005-plain.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# ADR-0005: plain header form\n\n**Date:** 2026-06-01\n"
+                     "**Status:** Accepted\nRelates-to: src/auth/*\n\n## Context\nx\n",
+                     encoding="utf-8")
+        stamp = f"@{int((self.now() - timedelta(days=5)).timestamp())} +0000"
+        self.git("add", "docs/decisions/0005-plain.md")
+        self.git("commit", "-q", "-m", "adr plain",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertEqual(len(self.findings_for("adr-stale", findings)), 1)
+
+
+class TestDigest(GitFixtureBase):
+    """digest = the windowed middle lens: brief is 'now', stats is 'all time',
+    digest is 'what happened in the last N days'."""
+
+    def seed_finished(self, days_ago, playbook="build", tier="standard",
+                      status="completed", loop_backs=0, task="some task"):
+        end = self.now() - timedelta(days=days_ago)
+        self.seed_run(end - timedelta(hours=2), end)
+        # rewrite last record with the requested fields
+        lp = self.root / ".devflow" / "runs.jsonl"
+        recs = [json.loads(l) for l in lp.read_text(encoding="utf-8").splitlines()]
+        recs[-1].update({"playbook": playbook, "tier": tier, "status": status,
+                         "loop_backs": loop_backs, "task": task})
+        lp.write_text("".join(json.dumps(r) + "\n" for r in recs), encoding="utf-8")
+
+    def write_debt(self, slug, status):
+        d = self.root / "docs" / "sessions"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"hotfix-debt-{slug}.md").write_text(
+            f"---\ntype: hotfix-debt\nstatus: {status}\ndate: 2026-06-10\n---\n",
+            encoding="utf-8")
+
+    def test_window_filters_old_runs(self):
+        self.seed_finished(2, task="recent work")
+        self.seed_finished(30, task="ancient work")
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("recent work", text)
+        self.assertNotIn("ancient work", text)
+        self.assertIn("1 completed", text)
+
+    def test_counts_abandoned_and_loopbacks(self):
+        self.seed_finished(1, status="completed", loop_backs=2)
+        self.seed_finished(2, status="completed")
+        self.seed_finished(3, status="abandoned", loop_backs=1)
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("2 completed", text)
+        self.assertIn("1 abandoned", text)
+        self.assertIn("3 loop-back", text)
+
+    def test_open_run_shown_in_flight(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="live bug")
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("in flight", text)
+        self.assertIn("live bug", text)
+
+    def test_open_debt_listed(self):
+        self.write_debt("payment-timeout", "open")
+        self.write_debt("old-closed", "closed")
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("payment-timeout", text)
+        self.assertNotIn("old-closed", text)
+
+    def test_line_cap(self):
+        for i in range(12):
+            self.seed_finished(1, task=f"run number {i}")
+        lines = devflow.cmd_digest(self.root)
+        self.assertLessEqual(len(lines), 20)
+
+    def test_days_override_includes_older(self):
+        self.seed_finished(10, task="ten days ago")
+        text7 = "\n".join(devflow.cmd_digest(self.root))
+        text30 = "\n".join(devflow.cmd_digest(self.root, days=30))
+        self.assertNotIn("ten days ago", text7)
+        self.assertIn("ten days ago", text30)
+
+    def test_explicit_zero_days_honored(self):
+        """Review NB-1: `days or 7` swallowed an explicit 0 — None means
+        default, 0 means an empty window."""
+        self.seed_finished(1, task="yesterday")
+        text = "\n".join(devflow.cmd_digest(self.root, days=0))
+        self.assertIn("last 0 days", text)
+        self.assertNotIn("yesterday", text)
+
+    def test_absence_and_garbage_tolerated(self):
+        lines = devflow.cmd_digest(self.root)  # empty .devflow only
+        self.assertTrue(lines)
+        with open(self.root / ".devflow" / "runs.jsonl", "a", encoding="utf-8") as fh:
+            fh.write("{broken json\n")
+        self.assertTrue(devflow.cmd_digest(self.root))
+
+
+class TestVerifySkipFlag(GitFixtureBase):
+    """CI cannot run out-of-band (the ledger is gitignored) — --skip makes
+    that exclusion explicit and visible, never silent."""
+
+    def test_skip_turns_check_into_note(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=1))  # would flag
+        findings, notes = devflow.cmd_verify(self.root, skip=("out-of-band",))
+        self.assertFalse(self.findings_for("out-of-band", findings))
+        self.assertTrue(any("request" in n
+                            for n in self.notes_for("out-of-band", notes)))
+
+    def test_skip_via_main_cli(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=1))
+        rc = devflow.main(["--root", str(self.root), "verify", "--strict",
+                           "--skip", "out-of-band"])
+        self.assertEqual(rc, 0)  # the only finding source was skipped
+
+
+class TestCiTemplates(unittest.TestCase):
+    REPO = Path(__file__).resolve().parent.parent
+
+    def read(self, name):
+        return (self.REPO / "ci" / "github-actions" / name).read_text(encoding="utf-8")
+
+    def test_verify_template_essentials(self):
+        text = self.read("devflow-verify.yml")
+        self.assertIn("pull_request", text)
+        self.assertIn(".devflow/devflow.py", text)       # fork-safe guard target
+        self.assertIn("--skip out-of-band", text)         # ledger is gitignored
+        self.assertIn("--strict", text)
+        self.assertIn("STRICT_GATE", text)                # documented hard-gate switch
+        self.assertIn("fetch-depth: 0", text)             # git-date checks need history
+        self.assertIn("grep -v ': note '", text)          # PR comment: findings only
+
+    def test_protected_gate_template_essentials(self):
+        text = self.read("protected-todo-gate.yml")
+        self.assertIn("pull_request", text)
+        self.assertIn("TODO: \\[PROTECTED", text)
+        self.assertIn("exit 1", text)                     # this one IS a gate
+
+    def test_added_line_regex_behavior(self):
+        """The gate greps only ADDED diff lines for the protected marker."""
+        pattern = re.compile(r"^\+.*TODO: \[PROTECTED", re.M)
+        diff = ("+++ b/src/auth/login.py\n"
+                "+    # TODO: [PROTECTED — human authorship required: token check]\n"
+                "-    # TODO: [PROTECTED — removed marker]\n"
+                "     # TODO: [PROTECTED — context line, unchanged]\n")
+        hits = pattern.findall(diff)
+        self.assertEqual(len(hits), 1)
+        self.assertNotIn("removed", hits[0])
+
+
+class TestVerifyStrictExit(VerifyBase):
+    def test_strict_exit_codes_via_main(self):
+        self.write_spec("bad.md", status="agreed", acs=())
+        rc_default = devflow.main(["--root", str(self.root), "verify"])
+        rc_strict = devflow.main(["--root", str(self.root), "verify", "--strict"])
+        self.assertEqual(rc_default, 0)
+        self.assertEqual(rc_strict, 1)
+
+    def test_strict_clean_is_zero(self):
+        self.write_spec("ok.md", acs=(1,))
+        rc = devflow.main(["--root", str(self.root), "verify", "--strict"])
+        self.assertEqual(rc, 0)
 
 
 class TestStats(StateCoreBase):

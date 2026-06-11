@@ -1,0 +1,71 @@
+# devflow: Verify on Pull Request
+# Template — copy to: .github/workflows/devflow-verify.yml in your project repository.
+#
+# Runs the rails' structural checks (`verify --strict`) against the PR:
+#   spec-links       agreed specs define AC-n; plans reference only defined ACs
+#   contract-stale   docs/interfaces/* older than their mapped implementation
+#   adr-stale        Accepted ADRs with Relates-to globs vs churn in those paths
+#
+# The out-of-band check is excluded (`--skip out-of-band`): it compares commits
+# against .devflow/runs.jsonl, which is machine-local and gitignored — a CI
+# checkout has no ledger, so the check would only produce noise here.
+#
+# Behaviour:
+# - Advisory by default: findings are posted as one PR comment; the job succeeds.
+#   Devflow produces, CI informs — flip the switch below to make CI enforce.
+# - Hard gate (optional): set STRICT_GATE to "true" and mark this workflow as a
+#   required status check in branch protection. Findings then fail the job.
+# - Fork-safe / not-adopted-safe: if .devflow/devflow.py is absent, the job
+#   notes that and exits green.
+#
+# Prerequisites:
+# - Rails installed in the repo (python devflow.py init) with .devflow/devflow.py
+#   and .devflow/config.json committed (state and ledger stay gitignored).
+# - Python 3 on the runner (present on ubuntu-latest).
+
+name: devflow — Verify
+
+on:
+  pull_request:
+
+env:
+  STRICT_GATE: "false"   # "true" → findings fail the job (use with branch protection)
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # for the advisory comment
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # contract/ADR staleness compares git commit dates
+
+      - name: Run devflow verify
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -f .devflow/devflow.py ]; then
+            echo "devflow rails not installed in this repo — nothing to verify."
+            exit 0
+          fi
+          set +e
+          OUTPUT=$(python .devflow/devflow.py verify --strict --skip out-of-band 2>&1)
+          RC=$?
+          set -e
+          echo "$OUTPUT"
+          if [ $RC -ne 0 ]; then
+            # Comment carries findings only — informational notes stay in the log
+            FINDINGS=$(echo "$OUTPUT" | grep -v ': note ' || true)
+            BODY=$(printf '**devflow verify** found structural issues on this PR:\n\n```\n%s\n```\n\n_Advisory check — see ci/github-actions/devflow-verify.yml for the hard-gate option._' "$FINDINGS")
+            gh pr comment "$PR_NUMBER" --body "$BODY" || true
+            if [ "$STRICT_GATE" = "true" ]; then
+              exit 1
+            fi
+          fi
+          exit 0

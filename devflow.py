@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # Phase sequences per playbook. Forward marks may skip optional phases;
 # skipping "red-confirmed" is special-cased (see cmd_mark).
@@ -191,6 +191,8 @@ DEFAULT_CONFIG = {
                       ".devflow/*", ".claude/*", "local/*", "specs/*"],
     "protected_paths": [],
     "brief_lines": 15,
+    "verify_window_days": 14,
+    "contract_map": {},
 }
 
 _RED_DENY_MSG = (
@@ -274,6 +276,35 @@ def cmd_gate(root, raw_stdin):
 
 # --- brief (SessionStart hook) + stop-check (Stop hook, advisory) -----------------
 
+def _open_debts(root):
+    """Names of docs/sessions/hotfix-debt-*.md files with status: open."""
+    debts = []
+    try:
+        for p in sorted((Path(root) / "docs" / "sessions").glob("hotfix-debt-*.md")):
+            try:
+                head = p.read_text(encoding="utf-8", errors="ignore")[:400]
+                if re.search(r"^status:\s*open\b", head, re.M):
+                    debts.append(p.name)
+            except OSError:
+                continue
+    except Exception:
+        pass
+    return debts
+
+
+def _index_entries(root, rel):
+    """Bullet entries of an index file, oldest first; [] when absent."""
+    try:
+        p = Path(root) / rel
+        if not p.exists():
+            return []
+        return [ln.strip()[2:].strip()
+                for ln in p.read_text(encoding="utf-8", errors="ignore").splitlines()
+                if ln.strip().startswith("- ")]
+    except Exception:
+        return []
+
+
 def cmd_brief(root):
     """Session orientation lines (AC-2). Every source tolerates absence."""
     lines = []
@@ -299,49 +330,94 @@ def cmd_brief(root):
         else:
             lines.append("[devflow] no active run")
 
-        try:
-            debts = []
-            for p in sorted((Path(root) / "docs" / "sessions").glob("hotfix-debt-*.md")):
-                try:
-                    head = p.read_text(encoding="utf-8", errors="ignore")[:400]
-                    if re.search(r"^status:\s*open\b", head, re.M):
-                        debts.append(p.name)
-                except OSError:
-                    continue
-            if debts:
-                shown = ", ".join(debts[:3]) + (
-                    f" (+{len(debts) - 3} more)" if len(debts) > 3 else "")
-                lines.append(f"[devflow] OPEN HOTFIX DEBT: {shown} — "
-                             "owed: root-cause fix + regression test (devflow-fix)")
-        except Exception:
-            pass
+        debts = _open_debts(root)
+        if debts:
+            shown = ", ".join(debts[:3]) + (
+                f" (+{len(debts) - 3} more)" if len(debts) > 3 else "")
+            lines.append(f"[devflow] OPEN HOTFIX DEBT: {shown} — "
+                         "owed: root-cause fix + regression test (devflow-fix)")
 
         for rel, label in (("docs/decisions/index.md", "decisions"),
                            ("docs/interfaces/index.md", "interfaces")):
-            try:
-                p = Path(root) / rel
-                if p.exists():
-                    entries = [ln.strip()[2:].strip()
-                               for ln in p.read_text(encoding="utf-8",
-                                                     errors="ignore").splitlines()
-                               if ln.strip().startswith("- ")]
-                    if entries:
-                        lines.append(f"[devflow] recent {label}: "
-                                     + " | ".join(reversed(entries[-3:])))
-            except Exception:
-                pass
+            entries = _index_entries(root, rel)
+            if entries:
+                lines.append(f"[devflow] recent {label}: "
+                             + " | ".join(reversed(entries[-3:])))
 
         return lines[:cap]
     except Exception:
         return lines[:15]
 
 
+def cmd_digest(root, days=None):
+    """Windowed summary (AC-6): brief is 'now', stats is 'all time', digest is
+    'what happened in the last N days' — the standup/weekly-review lens."""
+    lines = []
+    try:
+        days = 7 if days is None else days  # explicit 0 = empty window
+        cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
+
+        records = []
+        lp = ledger_path(root)
+        if lp.exists():
+            for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines():
+                try:
+                    rec = json.loads(line)
+                    ep = _ledger_epoch(rec["finished"])
+                    if ep >= cutoff:
+                        records.append((ep, rec))
+                except Exception:
+                    continue
+
+        completed = sum(1 for _, r in records if r.get("status") == "completed")
+        abandoned = sum(1 for _, r in records if r.get("status") == "abandoned")
+        loop_backs = sum(r.get("loop_backs", 0) for _, r in records)
+        if records:
+            lines.append(f"[digest] last {days} days — {completed} completed, "
+                         f"{abandoned} abandoned, {loop_backs} loop-back(s)")
+        else:
+            lines.append(f"[digest] last {days} days — no runs recorded")
+
+        for ep, rec in sorted(records, key=lambda t: t[0], reverse=True)[:5]:
+            lines.append(f"[digest]   {rec.get('playbook', '?')}/"
+                         f"{rec.get('tier', '?')}: {rec.get('task', '')[:60]} "
+                         f"({rec.get('status', '?')} {_day(ep)}, "
+                         f"{rec.get('loop_backs', 0)} loop-back(s))")
+
+        state = load_state(root)
+        if state:
+            lines.append(f"[digest] in flight: {state['run_id']} at "
+                         f"{state['phase']} — {state.get('task', '')[:60]}")
+
+        debts = _open_debts(root)
+        lines.append("[digest] open hotfix debt: "
+                     + (", ".join(debts[:4]) if debts else "none"))
+
+        for rel, label in (("docs/decisions/index.md", "decisions"),
+                           ("docs/interfaces/index.md", "interfaces")):
+            entries = _index_entries(root, rel)
+            if entries:
+                lines.append(f"[digest] latest {label}: "
+                             + " | ".join(reversed(entries[-3:])))
+
+        return lines[:20]
+    except Exception:
+        return lines[:20] or ["[digest] unavailable"]
+
+
 def cmd_stop_check(root):
-    """Advisory-only Stop output (D23): a dict to print as JSON, or None."""
+    """Advisory-only Stop output (D23): a dict to print as JSON, or None.
+    Debounced to once per hour — the harness re-invokes the model on Stop
+    additionalContext, so an un-debounced advisory loops (found live)."""
     try:
         state = load_state(root)
         if state is None or state.get("phase") == "accepted":
             return None
+        now_ep = datetime.now(timezone.utc).timestamp()
+        if now_ep - state.get("stop_nudged_epoch", 0) < 3600:
+            return None
+        state["stop_nudged_epoch"] = now_ep
+        save_state(root, state)
         return {"hookSpecificOutput": {
             "hookEventName": "Stop",
             "additionalContext": (
@@ -398,6 +474,258 @@ def cmd_stats(root):
     for key in sorted(by_playbook):
         lines.append(f"  {key}: {by_playbook[key]}")
     return "\n".join(lines)
+
+
+# --- verify (Phase 3): structural check chain ---------------------------------------
+# Advisory by default; --strict exits 1 on findings (D26). Every check returns
+# either ("skip", reason) or a list of finding strings, and may never raise out.
+
+_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)\s*:")
+_AC_REF_RE = re.compile(r"\b(AC-\d+)\b")
+_SPEC_REF_RE = re.compile(r"docs/specs/([\w.\-]+\.md)")
+_STATUS_RE = re.compile(r"(?m)^status:\s*(\w+)")
+
+
+def _read_text_safe(path):
+    return Path(path).read_text(encoding="utf-8", errors="ignore")
+
+
+def _check_spec_links(root, cfg, window_days):
+    """All checks return (findings, notes)."""
+    specs_dir = Path(root) / "docs" / "specs"
+    if not specs_dir.is_dir():
+        return [], ["no docs/specs/ directory"]
+
+    findings = []
+    spec_acs = {}
+    for spec in sorted(specs_dir.glob("*.md")):
+        text = _read_text_safe(spec)
+        acs = set(_AC_DEF_RE.findall(text))
+        spec_acs[spec.name] = acs
+        m = _STATUS_RE.search(text[:400])
+        if m and m.group(1).lower() in ("agreed", "accepted") and not acs:
+            findings.append(
+                f"{spec.name} has status '{m.group(1)}' but defines no AC-n criteria")
+
+    plans_dir = Path(root) / "docs" / "plans"
+    if plans_dir.is_dir():
+        for plan in sorted(plans_dir.glob("*.md")):
+            text = _read_text_safe(plan)
+            # A plan may legitimately reference several specs (consolidation,
+            # migration) — union the ACs of every resolvable reference.
+            refs = [m.group(1) for m in _SPEC_REF_RE.finditer(text)
+                    if m.group(1) in spec_acs]
+            if not refs:
+                continue  # no resolvable spec association — not checkable
+            defined = set().union(*(spec_acs[r] for r in refs))
+            missing = sorted(set(_AC_REF_RE.findall(text)) - defined)
+            for ac in missing:
+                findings.append(
+                    f"{plan.name} references {ac}, not defined in its "
+                    f"referenced spec(s): {', '.join(refs)}")
+    return findings, []
+
+
+def _git_run(root, *args):
+    out = subprocess.run(["git", "-C", str(root), *args],
+                         capture_output=True, text=True, timeout=30)
+    if out.returncode != 0:
+        raise RuntimeError(out.stderr.strip()[:160])
+    return out.stdout
+
+
+def _is_git_repo(root):
+    try:
+        return _git_run(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
+    except Exception:
+        return False
+
+
+def _ledger_epoch(iso_text):
+    return datetime.strptime(iso_text, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc).timestamp()
+
+
+def _run_intervals(root):
+    """[(start_epoch, finish_epoch)] from the ledger, plus the open run."""
+    intervals = []
+    lp = ledger_path(root)
+    if lp.exists():
+        for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines():
+            try:
+                rec = json.loads(line)
+                intervals.append((_ledger_epoch(rec["started"]),
+                                  _ledger_epoch(rec["finished"])))
+            except Exception:
+                continue
+    state = load_state(root)
+    if state:
+        try:
+            intervals.append((_ledger_epoch(state["started"]),
+                              datetime.now(timezone.utc).timestamp()))
+        except Exception:
+            pass
+    return intervals
+
+
+_OOB_SLACK = 120  # seconds — ledger has second precision; tolerate clock skew
+
+
+def _check_out_of_band(root, cfg, window_days):
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    try:
+        out = _git_run(root, "log", f"--since={window_days} days ago",
+                       "--format=%h %ct")
+    except RuntimeError:
+        return [], []  # no commits yet (fresh repo)
+    commits = []
+    for line in out.splitlines():
+        try:
+            h, ct = line.split()
+            commits.append((h, int(ct)))
+        except ValueError:
+            continue
+    if not commits:
+        return [], []
+    intervals = _run_intervals(root)
+    oob = [h for h, ct in commits
+           if not any(s - _OOB_SLACK <= ct <= f + _OOB_SLACK
+                      for s, f in intervals)]
+    if not oob:
+        return [], []
+    sample = ", ".join(oob[:3])
+    if not intervals:
+        return [f"{len(oob)} commit(s) in the last {window_days} days with no "
+                f"recorded runs (e.g. {sample}) — expected if you commit manually; "
+                f"playbook runs record themselves"], []
+    return [f"{len(oob)} of {len(commits)} commit(s) in the last {window_days} "
+            f"days fall outside any run window (e.g. {sample}) — expected if "
+            f"made manually"], []
+
+
+def _last_commit_epoch(root, pathspec):
+    try:
+        out = _git_run(root, "log", "-1", "--format=%ct", "--", pathspec).strip()
+        return int(out) if out else None
+    except (RuntimeError, ValueError):
+        return None
+
+
+def _day(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%d")
+
+
+def _check_contract_stale(root, cfg, window_days):
+    idir = Path(root) / "docs" / "interfaces"
+    if not idir.is_dir():
+        return [], ["no docs/interfaces/ directory"]
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    contracts = [p for p in sorted(idir.glob("*"))
+                 if p.is_file() and p.name != "index.md"]
+    if not contracts:
+        return [], ["no contract files"]
+
+    cmap = cfg.get("contract_map") or {}
+    findings, unmapped = [], []
+    for contract in contracts:
+        rel = contract.relative_to(root).as_posix()
+        globs = cmap.get(rel)
+        if not globs:
+            unmapped.append(contract.name)
+            continue
+        c_ep = _last_commit_epoch(root, rel)
+        if c_ep is None:
+            continue  # uncommitted contract — nothing to compare yet
+        for g in globs:
+            i_ep = _last_commit_epoch(root, g)
+            if i_ep and i_ep > c_ep:
+                findings.append(
+                    f"{rel} last changed {_day(c_ep)} but mapped implementation "
+                    f"'{g}' changed {_day(i_ep)} — contract may be stale")
+                break
+    notes = ([f"{len(unmapped)} contract(s) unmapped — add them to "
+              f"contract_map in .devflow/config.json to enable this check"]
+             if unmapped else [])
+    return findings, notes
+
+
+_ADR_STATUS_RE = re.compile(r"\*\*Status:\*\*\s*(\w+)")
+# [ \t]* not \s* — \s matches newlines, so a blank value would greedily
+# swallow the line break and capture the NEXT line as a "glob".
+_ADR_RELATES_RE = re.compile(r"(?im)^(?:\*\*)?relates-to:(?:\*\*)?[ \t]*(.*)$")
+
+
+def _check_adr_stale(root, cfg, window_days):
+    ddir = Path(root) / "docs" / "decisions"
+    if not ddir.is_dir():
+        return [], ["no docs/decisions/ directory"]
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    adrs = [p for p in sorted(ddir.glob("*.md")) if p.name != "index.md"]
+    if not adrs:
+        return [], ["no ADR files"]
+
+    findings, without = [], 0
+    for adr in adrs:
+        head = _read_text_safe(adr)[:1500]
+        sm = _ADR_STATUS_RE.search(head)
+        if not sm or sm.group(1).lower() != "accepted":
+            continue
+        rm = _ADR_RELATES_RE.search(head)
+        globs = ([g.strip() for g in rm.group(1).split(",") if g.strip()]
+                 if rm else [])
+        if not globs:  # header absent OR blank — both surface in the note
+            without += 1
+            continue
+        a_ep = _last_commit_epoch(root, adr.relative_to(root).as_posix())
+        if a_ep is None:
+            continue
+        for g in globs:
+            i_ep = _last_commit_epoch(root, g)
+            if i_ep and i_ep > a_ep:
+                findings.append(
+                    f"{adr.name} (Accepted) untouched since {_day(a_ep)} while "
+                    f"related '{g}' changed {_day(i_ep)} — verify the decision "
+                    f"still holds")
+                break
+    notes = ([f"{without} Accepted ADR(s) without Relates-to — staleness "
+              f"not checkable"] if without else [])
+    return findings, notes
+
+
+_VERIFY_CHECKS = [
+    ("spec-links", _check_spec_links),
+    ("out-of-band", _check_out_of_band),
+    ("contract-stale", _check_contract_stale),
+    ("adr-stale", _check_adr_stale),
+]
+
+
+def cmd_verify(root, window_days=None, skip=()):
+    """Run all structural checks → (findings, notes); never raises.
+    `skip` excludes checks by name, visibly (a note, never silence) — CI uses
+    it for out-of-band, whose ledger input is gitignored and absent there."""
+    findings, notes = [], []
+    try:
+        cfg = load_config(root)
+        window = (cfg.get("verify_window_days", 14)
+                  if window_days is None else window_days)
+        for name, fn in _VERIFY_CHECKS:
+            if name in skip:
+                notes.append((name, "skipped by request (--skip)"))
+                continue
+            try:
+                f, n = fn(root, cfg, window)
+            except Exception as exc:
+                notes.append((name, f"check failed safely ({exc.__class__.__name__})"))
+                continue
+            findings.extend((name, msg) for msg in f)
+            notes.extend((name, msg) for msg in n)
+    except Exception:
+        pass  # verify is advisory tooling — never break the caller
+    return findings, notes
 
 
 # --- init + doctor -----------------------------------------------------------------
@@ -622,6 +950,16 @@ def main(argv=None):
     sub.add_parser("doctor", help="install health checks")
     sub.add_parser("stats", help="aggregates from the run ledger")
 
+    p = sub.add_parser("verify", help="structural checks (advisory; --strict for CI)")
+    p.add_argument("--strict", action="store_true",
+                   help="exit 1 when any finding exists")
+    p.add_argument("--window-days", type=int, default=None)
+    p.add_argument("--skip", action="append", default=[], metavar="CHECK",
+                   help="exclude a check by name (repeatable); noted, not silent")
+
+    p = sub.add_parser("digest", help="windowed summary of recent runs/debt/decisions")
+    p.add_argument("--days", type=int, default=None)
+
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
 
@@ -664,6 +1002,17 @@ def main(argv=None):
             return 0 if all(ok for _, ok, _ in checks) else 1
         elif args.command == "stats":
             print(cmd_stats(root))
+        elif args.command == "digest":
+            print("\n".join(cmd_digest(root, days=args.days)))
+        elif args.command == "verify":
+            findings, notes = cmd_verify(root, window_days=args.window_days,
+                                         skip=tuple(args.skip))
+            for check, msg in findings:
+                print(f"[verify] {check}: {msg}")
+            for check, reason in notes:
+                print(f"[verify] {check}: note — {reason}")
+            print(f"[verify] {len(findings)} finding(s), {len(notes)} note(s)")
+            return 1 if (findings and args.strict) else 0
     except DevflowError as exc:
         print(f"devflow: {exc}", file=sys.stderr)
         return 1

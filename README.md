@@ -2,7 +2,9 @@
 
 A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) custom skills and worker agent definitions for disciplined, playbook-guided AI-assisted development.
 
-**v2 model: playbooks guide, rails verify.** A lightweight dispatch skill classifies each new task into one of six playbooks at one of three effort tiers. Playbooks shape the order of work — requirements before plans, reproduction before fixes, measurement before optimization — and produce durable artifacts: specs, plans, ADRs, interface contracts, session records. The **rails** (a single-file CLI with run state, wired into Claude Code hooks) verify the discipline mechanically: sessions self-orient, the TDD gate holds, protected paths stay human-only, and every run leaves a ledger record. CI checks arrive in Phase 3.
+**v2 model: playbooks guide, rails verify.** A lightweight dispatch skill classifies each new task into one of six playbooks at one of three effort tiers. Playbooks shape the order of work — requirements before plans, reproduction before fixes, measurement before optimization — and produce durable artifacts: specs, plans, ADRs, interface contracts, session records. The **rails** (a single-file CLI with run state, wired into Claude Code hooks) verify the discipline mechanically: sessions self-orient, the TDD gate holds, protected paths stay human-only, and every run leaves a ledger record. Copy-in CI templates carry the same checks to the merge boundary.
+
+**New here? Start with [docs/ADOPTION.md](docs/ADOPTION.md)** — three levels, each a few minutes, each reversible.
 
 ## How It Works
 
@@ -52,7 +54,8 @@ Prerequisites: Python 3 on PATH; on Windows, Git Bash (ships with Git for Window
 | TDD gate (PreToolUse hook) | **Enforced** | In a `fix`/`build` run at standard+ tier, production-file edits are denied until `mark red-confirmed`; tests/docs are never gated |
 | Protected paths (PreToolUse hook) | **Enforced** | Paths listed in `.devflow/config.json` are denied to the agent unconditionally — human authorship required |
 | Stop reminder | **Advisory** | A still-open run produces a gentle note; it never blocks the human |
-| Run ledger + `stats` | **Evidence** | One JSON record per run: durations, loop-backs, abandonment — the process becomes measurable |
+| Run ledger + `stats` + `digest` | **Evidence** | One JSON record per run; all-time aggregates and a recent-window summary — the process becomes measurable |
+| `verify` chains (+ CI templates in `ci/github-actions/`) | **Advisory → CI-enforceable** | Spec/AC linkage, out-of-band commits, contract & ADR staleness; advisory locally, `--strict` at the merge boundary |
 | Playbook discipline (step order, artifacts, severity-ranked review) | **Guided** | Prompt-level; the playbooks work with or without rails |
 
 Fail-open by design: any rails error, missing config, or `"enabled": false` in `.devflow/config.json` means nothing is ever blocked — the rails can be wrong, they cannot break your session.
