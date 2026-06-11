@@ -400,6 +400,78 @@ def cmd_stats(root):
     return "\n".join(lines)
 
 
+# --- verify (Phase 3): structural check chain ---------------------------------------
+# Advisory by default; --strict exits 1 on findings (D26). Every check returns
+# either ("skip", reason) or a list of finding strings, and may never raise out.
+
+_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)\s*:")
+_AC_REF_RE = re.compile(r"\b(AC-\d+)\b")
+_SPEC_REF_RE = re.compile(r"docs/specs/([\w.\-]+\.md)")
+_STATUS_RE = re.compile(r"(?m)^status:\s*(\w+)")
+
+
+def _read_text_safe(path):
+    return Path(path).read_text(encoding="utf-8", errors="ignore")
+
+
+def _check_spec_links(root, cfg, window_days):
+    specs_dir = Path(root) / "docs" / "specs"
+    if not specs_dir.is_dir():
+        return ("skip", "no docs/specs/ directory")
+
+    findings = []
+    spec_acs = {}
+    for spec in sorted(specs_dir.glob("*.md")):
+        text = _read_text_safe(spec)
+        acs = set(_AC_DEF_RE.findall(text))
+        spec_acs[spec.name] = acs
+        m = _STATUS_RE.search(text[:400])
+        if m and m.group(1).lower() in ("agreed", "accepted") and not acs:
+            findings.append(
+                f"{spec.name} has status '{m.group(1)}' but defines no AC-n criteria")
+
+    plans_dir = Path(root) / "docs" / "plans"
+    if plans_dir.is_dir():
+        for plan in sorted(plans_dir.glob("*.md")):
+            text = _read_text_safe(plan)
+            ref = _SPEC_REF_RE.search(text)
+            if not ref or ref.group(1) not in spec_acs:
+                continue  # no resolvable spec association — not checkable
+            defined = spec_acs[ref.group(1)]
+            missing = sorted(set(_AC_REF_RE.findall(text)) - defined)
+            for ac in missing:
+                findings.append(
+                    f"{plan.name} references {ac}, not defined in "
+                    f"docs/specs/{ref.group(1)}")
+    return findings
+
+
+_VERIFY_CHECKS = [
+    ("spec-links", _check_spec_links),
+]
+
+
+def cmd_verify(root, window_days=None):
+    """Run all structural checks → (findings, notes); never raises."""
+    findings, notes = [], []
+    try:
+        cfg = load_config(root)
+        window = window_days or cfg.get("verify_window_days", 14)
+        for name, fn in _VERIFY_CHECKS:
+            try:
+                result = fn(root, cfg, window)
+            except Exception as exc:
+                notes.append((name, f"check failed safely ({exc.__class__.__name__})"))
+                continue
+            if isinstance(result, tuple) and result and result[0] == "skip":
+                notes.append((name, result[1]))
+            else:
+                findings.extend((name, msg) for msg in result)
+    except Exception:
+        pass  # verify is advisory tooling — never break the caller
+    return findings, notes
+
+
 # --- init + doctor -----------------------------------------------------------------
 
 _HOOK_CMD = 'python "$CLAUDE_PROJECT_DIR/.devflow/devflow.py" {cmd}'
@@ -622,6 +694,11 @@ def main(argv=None):
     sub.add_parser("doctor", help="install health checks")
     sub.add_parser("stats", help="aggregates from the run ledger")
 
+    p = sub.add_parser("verify", help="structural checks (advisory; --strict for CI)")
+    p.add_argument("--strict", action="store_true",
+                   help="exit 1 when any finding exists")
+    p.add_argument("--window-days", type=int, default=None)
+
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
 
@@ -664,6 +741,14 @@ def main(argv=None):
             return 0 if all(ok for _, ok, _ in checks) else 1
         elif args.command == "stats":
             print(cmd_stats(root))
+        elif args.command == "verify":
+            findings, notes = cmd_verify(root, window_days=args.window_days)
+            for check, msg in findings:
+                print(f"[verify] {check}: {msg}")
+            for check, reason in notes:
+                print(f"[verify] {check}: skipped — {reason}")
+            print(f"[verify] {len(findings)} finding(s), {len(notes)} check(s) skipped")
+            return 1 if (findings and args.strict) else 0
     except DevflowError as exc:
         print(f"devflow: {exc}", file=sys.stderr)
         return 1

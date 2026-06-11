@@ -542,6 +542,98 @@ class TestBashCheck(unittest.TestCase):
         self.assertFalse(ok)
 
 
+class VerifyBase(StateCoreBase):
+    """Phase 3: verify chain tests. findings = [(check, msg)], notes = [(check, reason)]."""
+
+    def write_spec(self, name, status="agreed", acs=(1, 2)):
+        d = self.root / "docs" / "specs"
+        d.mkdir(parents=True, exist_ok=True)
+        ac_lines = "\n".join(f"- AC-{n}: criterion {n}" for n in acs)
+        (d / name).write_text(
+            f"---\ntype: spec\nstatus: {status}\ndate: 2026-06-11\n---\n\n"
+            f"# Spec {name}\n\n## Acceptance criteria\n{ac_lines}\n",
+            encoding="utf-8")
+
+    def write_plan(self, name, spec_ref, ac_refs):
+        d = self.root / "docs" / "plans"
+        d.mkdir(parents=True, exist_ok=True)
+        refs = " and ".join(f"AC-{n}" for n in ac_refs)
+        (d / name).write_text(
+            f"# Plan {name}\n\nPer spec docs/specs/{spec_ref} this covers {refs}.\n",
+            encoding="utf-8")
+
+    def run_verify(self, **kw):
+        return devflow.cmd_verify(self.root, **kw)
+
+    def findings_for(self, check, findings):
+        return [m for c, m in findings if c == check]
+
+    def notes_for(self, check, notes):
+        return [m for c, m in notes if c == check]
+
+
+class TestVerifySpecLinks(VerifyBase):
+    def test_no_specs_dir_skips(self):
+        findings, notes = self.run_verify()
+        self.assertTrue(self.notes_for("spec-links", notes))
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_agreed_spec_without_acs_flagged(self):
+        self.write_spec("empty.md", status="agreed", acs=())
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-links", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("empty.md", hits[0])
+
+    def test_draft_spec_without_acs_clean(self):
+        self.write_spec("draft.md", status="draft", acs=())
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_plan_referencing_existing_acs_clean(self):
+        self.write_spec("s.md", acs=(1, 2, 3))
+        self.write_plan("p.md", "s.md", (1, 3))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_plan_referencing_missing_ac_flagged(self):
+        self.write_spec("s.md", acs=(1, 2))
+        self.write_plan("p.md", "s.md", (1, 7))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-links", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-7", hits[0])
+        self.assertIn("p.md", hits[0])
+
+    def test_plan_without_spec_reference_ignored(self):
+        self.write_spec("s.md", acs=(1,))
+        (self.root / "docs" / "plans").mkdir(parents=True, exist_ok=True)
+        (self.root / "docs" / "plans" / "free.md").write_text(
+            "# Standalone plan, no spec, mentions AC-9 informally\n", encoding="utf-8")
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_check_crash_becomes_note_never_raises(self):
+        (self.root / "docs" / "specs").mkdir(parents=True)
+        (self.root / "docs" / "specs" / "binary.md").write_bytes(b"\xff\xfe\x00garbage")
+        findings, notes = self.run_verify()  # must not raise
+        self.assertIsInstance(findings, list)
+
+
+class TestVerifyStrictExit(VerifyBase):
+    def test_strict_exit_codes_via_main(self):
+        self.write_spec("bad.md", status="agreed", acs=())
+        rc_default = devflow.main(["--root", str(self.root), "verify"])
+        rc_strict = devflow.main(["--root", str(self.root), "verify", "--strict"])
+        self.assertEqual(rc_default, 0)
+        self.assertEqual(rc_strict, 1)
+
+    def test_strict_clean_is_zero(self):
+        self.write_spec("ok.md", acs=(1,))
+        rc = devflow.main(["--root", str(self.root), "verify", "--strict"])
+        self.assertEqual(rc, 0)
+
+
 class TestStats(StateCoreBase):
     def seed_ledger(self):
         records = [
