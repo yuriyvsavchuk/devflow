@@ -57,7 +57,7 @@ date: YYYY-MM-DD
 
 Rules:
 
-- Acceptance criteria are numbered `AC-n` and each is **independently testable** — downstream tests, reviews, and acceptance checks reference these IDs. A criterion that cannot fail a test is not a criterion.
+- Acceptance criteria are numbered `AC-n` and each is **independently testable** — downstream tests, reviews, and acceptance checks reference these IDs. A criterion that cannot fail a test is not a criterion. (Format contract: docs/ADOPTION.md → front-matter conventions; the rails' `verify` checks it.)
 - **XL size or Low confidence → split** into multiple specs before any planning; each spec routes through dispatch separately.
 
 ### 4. Decision checkpoint

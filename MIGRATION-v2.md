@@ -84,4 +84,12 @@ What changes day-to-day:
 
 Prerequisites: Python 3 on PATH; Git Bash on Windows. Escape hatch: `"enabled": false` in `.devflow/config.json` — or delete `.devflow/` — and nothing is ever blocked (the rails are fail-open at every layer). Install at the directory you open Claude Code in — that's the project root the hooks see.
 
-CI snippet packs follow in Phase 3.
+## Phase 3 upgrade — everyday value (shipped)
+
+Re-run `init` in each project to refresh the pinned copy (now **2.1.0** — `doctor` flags version skew):
+
+- **`verify`** — structural checks over your artifacts: agreed specs must define `AC-n`, plans may only reference defined ACs, contracts and Accepted ADRs are nudged when their constrained paths churn after them, and commits outside run windows are surfaced. Advisory by default; `--strict` for CI; `--skip <check>` excludes visibly (a note, never silence).
+- **`digest --days N`** — the windowed middle lens between `brief` (now) and `stats` (all time): recent runs with outcomes and loop-backs, in-flight work, open debt, latest decisions.
+- **CI templates** at `ci/github-actions/` — `devflow-verify.yml` (advisory PR comment; `STRICT_GATE` switch for required-check enforcement) and `protected-todo-gate.yml` (fails PRs adding unresolved human-authorship markers).
+- **ADR `Relates-to:`** — optional header line of path globs a decision constrains; powers the staleness nudge.
+- **[docs/ADOPTION.md](docs/ADOPTION.md)** — the three-level install path and the artifact front-matter conventions in one place.
