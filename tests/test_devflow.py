@@ -1000,6 +1000,7 @@ class TestCiTemplates(unittest.TestCase):
         self.assertIn("--strict", text)
         self.assertIn("STRICT_GATE", text)                # documented hard-gate switch
         self.assertIn("fetch-depth: 0", text)             # git-date checks need history
+        self.assertIn("grep -v ': note '", text)          # PR comment: findings only
 
     def test_protected_gate_template_essentials(self):
         text = self.read("protected-todo-gate.yml")
