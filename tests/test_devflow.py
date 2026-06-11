@@ -533,6 +533,14 @@ class TestBashCheck(unittest.TestCase):
         ok, _ = devflow._bash_check(platform="linux", candidates=[])
         self.assertTrue(ok)
 
+    def test_probe_exception_is_not_crash(self):
+        def boom(_path):
+            raise OSError("not found")
+        ok, _ = devflow._bash_check(platform="win32",
+                                    candidates=[r"C:\ghost\bash.exe"],
+                                    version_runner=boom)
+        self.assertFalse(ok)
+
 
 class TestStats(StateCoreBase):
     def seed_ledger(self):
