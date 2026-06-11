@@ -652,7 +652,9 @@ def _check_contract_stale(root, cfg, window_days):
 
 
 _ADR_STATUS_RE = re.compile(r"\*\*Status:\*\*\s*(\w+)")
-_ADR_RELATES_RE = re.compile(r"(?im)^(?:\*\*)?relates-to:(?:\*\*)?\s*(.*)$")
+# [ \t]* not \s* — \s matches newlines, so a blank value would greedily
+# swallow the line break and capture the NEXT line as a "glob".
+_ADR_RELATES_RE = re.compile(r"(?im)^(?:\*\*)?relates-to:(?:\*\*)?[ \t]*(.*)$")
 
 
 def _check_adr_stale(root, cfg, window_days):
