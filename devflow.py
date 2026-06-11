@@ -276,6 +276,35 @@ def cmd_gate(root, raw_stdin):
 
 # --- brief (SessionStart hook) + stop-check (Stop hook, advisory) -----------------
 
+def _open_debts(root):
+    """Names of docs/sessions/hotfix-debt-*.md files with status: open."""
+    debts = []
+    try:
+        for p in sorted((Path(root) / "docs" / "sessions").glob("hotfix-debt-*.md")):
+            try:
+                head = p.read_text(encoding="utf-8", errors="ignore")[:400]
+                if re.search(r"^status:\s*open\b", head, re.M):
+                    debts.append(p.name)
+            except OSError:
+                continue
+    except Exception:
+        pass
+    return debts
+
+
+def _index_entries(root, rel):
+    """Bullet entries of an index file, oldest first; [] when absent."""
+    try:
+        p = Path(root) / rel
+        if not p.exists():
+            return []
+        return [ln.strip()[2:].strip()
+                for ln in p.read_text(encoding="utf-8", errors="ignore").splitlines()
+                if ln.strip().startswith("- ")]
+    except Exception:
+        return []
+
+
 def cmd_brief(root):
     """Session orientation lines (AC-2). Every source tolerates absence."""
     lines = []
@@ -301,41 +330,79 @@ def cmd_brief(root):
         else:
             lines.append("[devflow] no active run")
 
-        try:
-            debts = []
-            for p in sorted((Path(root) / "docs" / "sessions").glob("hotfix-debt-*.md")):
-                try:
-                    head = p.read_text(encoding="utf-8", errors="ignore")[:400]
-                    if re.search(r"^status:\s*open\b", head, re.M):
-                        debts.append(p.name)
-                except OSError:
-                    continue
-            if debts:
-                shown = ", ".join(debts[:3]) + (
-                    f" (+{len(debts) - 3} more)" if len(debts) > 3 else "")
-                lines.append(f"[devflow] OPEN HOTFIX DEBT: {shown} — "
-                             "owed: root-cause fix + regression test (devflow-fix)")
-        except Exception:
-            pass
+        debts = _open_debts(root)
+        if debts:
+            shown = ", ".join(debts[:3]) + (
+                f" (+{len(debts) - 3} more)" if len(debts) > 3 else "")
+            lines.append(f"[devflow] OPEN HOTFIX DEBT: {shown} — "
+                         "owed: root-cause fix + regression test (devflow-fix)")
 
         for rel, label in (("docs/decisions/index.md", "decisions"),
                            ("docs/interfaces/index.md", "interfaces")):
-            try:
-                p = Path(root) / rel
-                if p.exists():
-                    entries = [ln.strip()[2:].strip()
-                               for ln in p.read_text(encoding="utf-8",
-                                                     errors="ignore").splitlines()
-                               if ln.strip().startswith("- ")]
-                    if entries:
-                        lines.append(f"[devflow] recent {label}: "
-                                     + " | ".join(reversed(entries[-3:])))
-            except Exception:
-                pass
+            entries = _index_entries(root, rel)
+            if entries:
+                lines.append(f"[devflow] recent {label}: "
+                             + " | ".join(reversed(entries[-3:])))
 
         return lines[:cap]
     except Exception:
         return lines[:15]
+
+
+def cmd_digest(root, days=None):
+    """Windowed summary (AC-6): brief is 'now', stats is 'all time', digest is
+    'what happened in the last N days' — the standup/weekly-review lens."""
+    lines = []
+    try:
+        days = days or 7
+        cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
+
+        records = []
+        lp = ledger_path(root)
+        if lp.exists():
+            for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines():
+                try:
+                    rec = json.loads(line)
+                    ep = _ledger_epoch(rec["finished"])
+                    if ep >= cutoff:
+                        records.append((ep, rec))
+                except Exception:
+                    continue
+
+        completed = sum(1 for _, r in records if r.get("status") == "completed")
+        abandoned = sum(1 for _, r in records if r.get("status") == "abandoned")
+        loop_backs = sum(r.get("loop_backs", 0) for _, r in records)
+        if records:
+            lines.append(f"[digest] last {days} days — {completed} completed, "
+                         f"{abandoned} abandoned, {loop_backs} loop-back(s)")
+        else:
+            lines.append(f"[digest] last {days} days — no runs recorded")
+
+        for ep, rec in sorted(records, key=lambda t: t[0], reverse=True)[:5]:
+            lines.append(f"[digest]   {rec.get('playbook', '?')}/"
+                         f"{rec.get('tier', '?')}: {rec.get('task', '')[:60]} "
+                         f"({rec.get('status', '?')} {_day(ep)}, "
+                         f"{rec.get('loop_backs', 0)} loop-back(s))")
+
+        state = load_state(root)
+        if state:
+            lines.append(f"[digest] in flight: {state['run_id']} at "
+                         f"{state['phase']} — {state.get('task', '')[:60]}")
+
+        debts = _open_debts(root)
+        lines.append("[digest] open hotfix debt: "
+                     + (", ".join(debts[:4]) if debts else "none"))
+
+        for rel, label in (("docs/decisions/index.md", "decisions"),
+                           ("docs/interfaces/index.md", "interfaces")):
+            entries = _index_entries(root, rel)
+            if entries:
+                lines.append(f"[digest] latest {label}: "
+                             + " | ".join(reversed(entries[-3:])))
+
+        return lines[:20]
+    except Exception:
+        return lines[:20] or ["[digest] unavailable"]
 
 
 def cmd_stop_check(root):
@@ -876,6 +943,9 @@ def main(argv=None):
                    help="exit 1 when any finding exists")
     p.add_argument("--window-days", type=int, default=None)
 
+    p = sub.add_parser("digest", help="windowed summary of recent runs/debt/decisions")
+    p.add_argument("--days", type=int, default=None)
+
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else resolve_root()
 
@@ -918,6 +988,8 @@ def main(argv=None):
             return 0 if all(ok for _, ok, _ in checks) else 1
         elif args.command == "stats":
             print(cmd_stats(root))
+        elif args.command == "digest":
+            print("\n".join(cmd_digest(root, days=args.days)))
         elif args.command == "verify":
             findings, notes = cmd_verify(root, window_days=args.window_days)
             for check, msg in findings:

@@ -817,6 +817,79 @@ class TestVerifyAdrStale(GitFixtureBase):
         self.assertTrue(self.notes_for("adr-stale", notes))
 
 
+class TestDigest(GitFixtureBase):
+    """digest = the windowed middle lens: brief is 'now', stats is 'all time',
+    digest is 'what happened in the last N days'."""
+
+    def seed_finished(self, days_ago, playbook="build", tier="standard",
+                      status="completed", loop_backs=0, task="some task"):
+        end = self.now() - timedelta(days=days_ago)
+        self.seed_run(end - timedelta(hours=2), end)
+        # rewrite last record with the requested fields
+        lp = self.root / ".devflow" / "runs.jsonl"
+        recs = [json.loads(l) for l in lp.read_text(encoding="utf-8").splitlines()]
+        recs[-1].update({"playbook": playbook, "tier": tier, "status": status,
+                         "loop_backs": loop_backs, "task": task})
+        lp.write_text("".join(json.dumps(r) + "\n" for r in recs), encoding="utf-8")
+
+    def write_debt(self, slug, status):
+        d = self.root / "docs" / "sessions"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"hotfix-debt-{slug}.md").write_text(
+            f"---\ntype: hotfix-debt\nstatus: {status}\ndate: 2026-06-10\n---\n",
+            encoding="utf-8")
+
+    def test_window_filters_old_runs(self):
+        self.seed_finished(2, task="recent work")
+        self.seed_finished(30, task="ancient work")
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("recent work", text)
+        self.assertNotIn("ancient work", text)
+        self.assertIn("1 completed", text)
+
+    def test_counts_abandoned_and_loopbacks(self):
+        self.seed_finished(1, status="completed", loop_backs=2)
+        self.seed_finished(2, status="completed")
+        self.seed_finished(3, status="abandoned", loop_backs=1)
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("2 completed", text)
+        self.assertIn("1 abandoned", text)
+        self.assertIn("3 loop-back", text)
+
+    def test_open_run_shown_in_flight(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="live bug")
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("in flight", text)
+        self.assertIn("live bug", text)
+
+    def test_open_debt_listed(self):
+        self.write_debt("payment-timeout", "open")
+        self.write_debt("old-closed", "closed")
+        text = "\n".join(devflow.cmd_digest(self.root))
+        self.assertIn("payment-timeout", text)
+        self.assertNotIn("old-closed", text)
+
+    def test_line_cap(self):
+        for i in range(12):
+            self.seed_finished(1, task=f"run number {i}")
+        lines = devflow.cmd_digest(self.root)
+        self.assertLessEqual(len(lines), 20)
+
+    def test_days_override_includes_older(self):
+        self.seed_finished(10, task="ten days ago")
+        text7 = "\n".join(devflow.cmd_digest(self.root))
+        text30 = "\n".join(devflow.cmd_digest(self.root, days=30))
+        self.assertNotIn("ten days ago", text7)
+        self.assertIn("ten days ago", text30)
+
+    def test_absence_and_garbage_tolerated(self):
+        lines = devflow.cmd_digest(self.root)  # empty .devflow only
+        self.assertTrue(lines)
+        with open(self.root / ".devflow" / "runs.jsonl", "a", encoding="utf-8") as fh:
+            fh.write("{broken json\n")
+        self.assertTrue(devflow.cmd_digest(self.root))
+
+
 class TestVerifyStrictExit(VerifyBase):
     def test_strict_exit_codes_via_main(self):
         self.write_spec("bad.md", status="agreed", acs=())
