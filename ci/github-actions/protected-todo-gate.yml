@@ -36,7 +36,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git fetch --no-tags origin "$BASE_REF"   # guarantee the base ref locally
           ADDED=$(git diff "origin/$BASE_REF"...HEAD | grep -E '^\+.*TODO: \[PROTECTED' || true)
           if [ -n "$ADDED" ]; then
             echo "Unresolved protected-path work is being merged:"

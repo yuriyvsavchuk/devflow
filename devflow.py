@@ -354,7 +354,7 @@ def cmd_digest(root, days=None):
     'what happened in the last N days' — the standup/weekly-review lens."""
     lines = []
     try:
-        days = days or 7
+        days = 7 if days is None else days  # explicit 0 = empty window
         cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
 
         records = []
@@ -511,15 +511,18 @@ def _check_spec_links(root, cfg, window_days):
     if plans_dir.is_dir():
         for plan in sorted(plans_dir.glob("*.md")):
             text = _read_text_safe(plan)
-            ref = _SPEC_REF_RE.search(text)
-            if not ref or ref.group(1) not in spec_acs:
+            # A plan may legitimately reference several specs (consolidation,
+            # migration) — union the ACs of every resolvable reference.
+            refs = [m.group(1) for m in _SPEC_REF_RE.finditer(text)
+                    if m.group(1) in spec_acs]
+            if not refs:
                 continue  # no resolvable spec association — not checkable
-            defined = spec_acs[ref.group(1)]
+            defined = set().union(*(spec_acs[r] for r in refs))
             missing = sorted(set(_AC_REF_RE.findall(text)) - defined)
             for ac in missing:
                 findings.append(
-                    f"{plan.name} references {ac}, not defined in "
-                    f"docs/specs/{ref.group(1)}")
+                    f"{plan.name} references {ac}, not defined in its "
+                    f"referenced spec(s): {', '.join(refs)}")
     return findings, []
 
 
@@ -649,7 +652,7 @@ def _check_contract_stale(root, cfg, window_days):
 
 
 _ADR_STATUS_RE = re.compile(r"\*\*Status:\*\*\s*(\w+)")
-_ADR_RELATES_RE = re.compile(r"(?m)^(?:\*\*Relates-to:\*\*|relates-to:)\s*(.+)$")
+_ADR_RELATES_RE = re.compile(r"(?im)^(?:\*\*)?relates-to:(?:\*\*)?\s*(.*)$")
 
 
 def _check_adr_stale(root, cfg, window_days):
@@ -669,10 +672,11 @@ def _check_adr_stale(root, cfg, window_days):
         if not sm or sm.group(1).lower() != "accepted":
             continue
         rm = _ADR_RELATES_RE.search(head)
-        if not rm:
+        globs = ([g.strip() for g in rm.group(1).split(",") if g.strip()]
+                 if rm else [])
+        if not globs:  # header absent OR blank — both surface in the note
             without += 1
             continue
-        globs = [g.strip() for g in rm.group(1).split(",") if g.strip()]
         a_ep = _last_commit_epoch(root, adr.relative_to(root).as_posix())
         if a_ep is None:
             continue
@@ -704,7 +708,8 @@ def cmd_verify(root, window_days=None, skip=()):
     findings, notes = [], []
     try:
         cfg = load_config(root)
-        window = window_days or cfg.get("verify_window_days", 14)
+        window = (cfg.get("verify_window_days", 14)
+                  if window_days is None else window_days)
         for name, fn in _VERIFY_CHECKS:
             if name in skip:
                 notes.append((name, "skipped by request (--skip)"))
@@ -1003,8 +1008,8 @@ def main(argv=None):
             for check, msg in findings:
                 print(f"[verify] {check}: {msg}")
             for check, reason in notes:
-                print(f"[verify] {check}: skipped — {reason}")
-            print(f"[verify] {len(findings)} finding(s), {len(notes)} check(s) skipped")
+                print(f"[verify] {check}: note — {reason}")
+            print(f"[verify] {len(findings)} finding(s), {len(notes)} note(s)")
             return 1 if (findings and args.strict) else 0
     except DevflowError as exc:
         print(f"devflow: {exc}", file=sys.stderr)

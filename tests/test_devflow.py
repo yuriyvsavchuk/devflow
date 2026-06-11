@@ -640,6 +640,46 @@ class TestVerifySpecLinks(VerifyBase):
         findings, notes = self.run_verify()  # must not raise
         self.assertIsInstance(findings, list)
 
+    def test_plan_spanning_two_specs_clean(self):
+        """Review Blocking-1: a plan may reference several specs — ACs must be
+        unioned across all of them, not checked against the first only."""
+        self.write_spec("a.md", acs=(1, 2, 3))
+        self.write_spec("b.md", acs=(4, 5, 6))
+        d = self.root / "docs" / "plans"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "multi.md").write_text(
+            "Per docs/specs/a.md this covers AC-1 and AC-3; "
+            "per docs/specs/b.md it also covers AC-4 and AC-6.\n",
+            encoding="utf-8")
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-links", findings))
+
+    def test_plan_spanning_two_specs_still_flags_missing(self):
+        self.write_spec("a.md", acs=(1,))
+        self.write_spec("b.md", acs=(4,))
+        d = self.root / "docs" / "plans"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "multi.md").write_text(
+            "Per docs/specs/a.md and docs/specs/b.md covering AC-1, AC-4, AC-9.\n",
+            encoding="utf-8")
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-links", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-9", hits[0])
+
+    def test_genuinely_crashing_check_becomes_note(self):
+        """The dispatch loop's crash containment, exercised for real."""
+        def boom(root, cfg, window):
+            raise RuntimeError("boom")
+        original = devflow._VERIFY_CHECKS
+        devflow._VERIFY_CHECKS = list(original) + [("boom-check", boom)]
+        try:
+            findings, notes = self.run_verify()
+            self.assertTrue(any(c == "boom-check" and "failed safely" in m
+                                for c, m in notes))
+        finally:
+            devflow._VERIFY_CHECKS = original
+
 
 class GitFixtureBase(VerifyBase):
     """Real temp git repos with controlled commit timestamps."""
@@ -817,6 +857,33 @@ class TestVerifyAdrStale(GitFixtureBase):
         _, notes = self.run_verify()
         self.assertTrue(self.notes_for("adr-stale", notes))
 
+    def test_blank_relates_to_counted_not_silently_skipped(self):
+        """Review NB-2: '**Relates-to:** ' with no globs must surface in the
+        without-Relates-to note, never vanish."""
+        self.init_repo()
+        self.write_adr("0004-blank.md", relates_to=" ",
+                       when=self.now() - timedelta(days=2))
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+        self.assertTrue(any("1 Accepted ADR" in n
+                            for n in self.notes_for("adr-stale", notes)))
+
+    def test_plain_title_case_relates_to_matched(self):
+        """Review NB-4: 'Relates-to:' without bold markers must also count."""
+        self.init_repo()
+        p = self.root / "docs" / "decisions" / "0005-plain.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# ADR-0005: plain header form\n\n**Date:** 2026-06-01\n"
+                     "**Status:** Accepted\nRelates-to: src/auth/*\n\n## Context\nx\n",
+                     encoding="utf-8")
+        stamp = f"@{int((self.now() - timedelta(days=5)).timestamp())} +0000"
+        self.git("add", "docs/decisions/0005-plain.md")
+        self.git("commit", "-q", "-m", "adr plain",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertEqual(len(self.findings_for("adr-stale", findings)), 1)
+
 
 class TestDigest(GitFixtureBase):
     """digest = the windowed middle lens: brief is 'now', stats is 'all time',
@@ -882,6 +949,14 @@ class TestDigest(GitFixtureBase):
         text30 = "\n".join(devflow.cmd_digest(self.root, days=30))
         self.assertNotIn("ten days ago", text7)
         self.assertIn("ten days ago", text30)
+
+    def test_explicit_zero_days_honored(self):
+        """Review NB-1: `days or 7` swallowed an explicit 0 — None means
+        default, 0 means an empty window."""
+        self.seed_finished(1, task="yesterday")
+        text = "\n".join(devflow.cmd_digest(self.root, days=0))
+        self.assertIn("last 0 days", text)
+        self.assertNotIn("yesterday", text)
 
     def test_absence_and_garbage_tolerated(self):
         lines = devflow.cmd_digest(self.root)  # empty .devflow only

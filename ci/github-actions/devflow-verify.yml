@@ -60,7 +60,9 @@ jobs:
           set -e
           echo "$OUTPUT"
           if [ $RC -ne 0 ]; then
-            BODY=$(printf '**devflow verify** found structural issues on this PR:\n\n```\n%s\n```\n\n_Advisory check — see ci/github-actions/devflow-verify.yml for the hard-gate option._' "$OUTPUT")
+            # Comment carries findings only — informational notes stay in the log
+            FINDINGS=$(echo "$OUTPUT" | grep -v ': note ' || true)
+            BODY=$(printf '**devflow verify** found structural issues on this PR:\n\n```\n%s\n```\n\n_Advisory check — see ci/github-actions/devflow-verify.yml for the hard-gate option._' "$FINDINGS")
             gh pr comment "$PR_NUMBER" --body "$BODY" || true
             if [ "$STRICT_GATE" = "true" ]; then
               exit 1

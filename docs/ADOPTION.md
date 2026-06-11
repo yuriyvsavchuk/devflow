@@ -65,8 +65,10 @@ These formats are the contract `verify` checks against. Deviations are treated a
 
 | Artifact | Location | Required shape |
 |---|---|---|
-| Spec | `docs/specs/<slug>.md` | YAML front-matter `type: spec`, `status: draft\|agreed`, `date:`; criteria as `- AC-1: <independently testable>` bullets. Plans reference the spec path and its `AC-n` IDs |
+| Spec | `docs/specs/<slug>.md` | YAML front-matter `type: spec`, `status: draft\|agreed\|accepted`, `date:`; criteria as `- AC-1: <independently testable>` bullets. Plans reference the spec path(s) and their `AC-n` IDs — a plan may cite several specs; ACs are checked against the union |
 | Hotfix debt | `docs/sessions/hotfix-debt-<slug>.md` | Front-matter `type: hotfix-debt`, `status: open\|closed`, `date:`. The brief nags while `open`; only a follow-up fix run closes it |
 | ADR | `docs/decisions/NNNN-<slug>.md` | Header lines `**Status:** Accepted` and optional `**Relates-to:** <glob>, <glob>` — globs of paths the decision constrains; enables the staleness nudge |
 | Indexes | `docs/decisions/index.md`, `docs/interfaces/index.md` | One `- <entry>` bullet per item, newest appended last; consumed by brief and digest |
 | Contract map | `.devflow/config.json` → `contract_map` | `{"docs/interfaces/<file>": ["src/api/*", …]}` — enables contract-staleness checking |
+
+Two semantics worth knowing: **staleness checks are all-time** comparisons of git commit dates (`--window-days` scopes only the out-of-band check), and the `contract_map` / `Relates-to` patterns are passed to git as **pathspecs, where `*` matches across directory separators by default** — `src/api/*` covers the whole subtree, verified empirically. Header forms accepted for ADRs: `**Relates-to:**`, `Relates-to:`, or `relates-to:`.
