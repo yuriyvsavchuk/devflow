@@ -2,7 +2,7 @@
 
 A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) custom skills and worker agent definitions for disciplined, playbook-guided AI-assisted development.
 
-**v2 model: playbooks guide, rails verify.** A lightweight dispatch skill classifies each new task into one of six playbooks at one of three effort tiers. Playbooks shape the order of work — requirements before plans, reproduction before fixes, measurement before optimization — and produce durable artifacts: specs, plans, ADRs, interface contracts, session records. Deterministic verification (a CLI with run state, Claude Code hooks, CI checks) ships in Phase 2 of the v2 programme; until then the framework is guidance plus artifacts, and says so honestly.
+**v2 model: playbooks guide, rails verify.** A lightweight dispatch skill classifies each new task into one of six playbooks at one of three effort tiers. Playbooks shape the order of work — requirements before plans, reproduction before fixes, measurement before optimization — and produce durable artifacts: specs, plans, ADRs, interface contracts, session records. The **rails** (a single-file CLI with run state, wired into Claude Code hooks) verify the discipline mechanically: sessions self-orient, the TDD gate holds, protected paths stay human-only, and every run leaves a ledger record. CI checks arrive in Phase 3.
 
 ## How It Works
 
@@ -33,6 +33,29 @@ Tests-only and docs-only work goes directly to the `test-engineer` / `docs-updat
 | `full` | Public APIs, shared modules, risk keywords (auth, payment, migration…) | Independent reviewer + acceptance subagents; contracts; context maps |
 
 The user's one-word override always wins: `quick: fix the date format` / `full: change the billing API`.
+
+## Rails — what's enforced vs guided
+
+Install once per project — run from **your project's root** (the directory you open Claude Code in), pointing at the framework's copy:
+
+```sh
+cd /path/to/your-project
+python /path/to/devflow/devflow.py init   # scaffolds .devflow/, wires hooks merge-safe into .claude/settings.json
+python .devflow/devflow.py doctor         # health check (your project now has its own pinned copy)
+```
+
+Prerequisites: Python 3 on PATH; on Windows, Git Bash (ships with Git for Windows — hooks run shell commands through it).
+
+| Mechanism | Kind | What it does |
+|---|---|---|
+| Session brief (SessionStart hook, incl. after compaction) | **Automatic** | Injects orientation: open run + phase, open hotfix debt, latest decision/interface entries |
+| TDD gate (PreToolUse hook) | **Enforced** | In a `fix`/`build` run at standard+ tier, production-file edits are denied until `mark red-confirmed`; tests/docs are never gated |
+| Protected paths (PreToolUse hook) | **Enforced** | Paths listed in `.devflow/config.json` are denied to the agent unconditionally — human authorship required |
+| Stop reminder | **Advisory** | A still-open run produces a gentle note; it never blocks the human |
+| Run ledger + `stats` | **Evidence** | One JSON record per run: durations, loop-backs, abandonment — the process becomes measurable |
+| Playbook discipline (step order, artifacts, severity-ranked review) | **Guided** | Prompt-level; the playbooks work with or without rails |
+
+Fail-open by design: any rails error, missing config, or `"enabled": false` in `.devflow/config.json` means nothing is ever blocked — the rails can be wrong, they cannot break your session.
 
 ## What's Inside
 

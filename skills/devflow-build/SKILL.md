@@ -8,6 +8,8 @@ framework: devflow
 
 One skeleton for three kinds of change. The **feature** adapter is the default; **refactor** and **performance** adjust the front of the flow. At `quick` tier the steps compress — they do not disappear.
 
+**Rails:** when `.devflow/` exists, record phases as you pass them (`python .devflow/devflow.py mark <phase>`): `plan-confirmed → [contract-confirmed] → red-confirmed → implemented → review-passed → accepted`, then `finish`. At standard+ tier the edit gate denies production-file edits before `red-confirmed`; standard ordering (implement-then-test) requires the explicit exception `mark implemented --no-tdd "<why>"` — recorded, never silent.
+
 ## Skeleton
 
 ### 1. Plan

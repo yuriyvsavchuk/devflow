@@ -53,6 +53,9 @@ or `Direct: <skill> — <one-line reason>`
 
 Nothing else — no headers, no footers. Then load the playbook skill and begin.
 
+**Rails:** if `.devflow/` exists in the project, open the run right after the announcement:
+`python .devflow/devflow.py start <playbook> --tier <tier> --task "<one-liner>"` — and `finish` it at the playbook's exit. No `.devflow/` → skip silently; the playbooks work unchanged without rails.
+
 ## Routing challenge
 
 At every playbook step transition, one-line self-check: *is this still the right playbook and tier?* If not, say what changed in one line and re-dispatch. Mid-course correction is expected, not a failure.

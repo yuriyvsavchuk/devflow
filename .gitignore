@@ -1,2 +1,7 @@
 tools/*
 local/
+__pycache__/
+.devflow/state.json
+.devflow/state.json.corrupt
+.devflow/runs.jsonl
+.devflow/devflow.py

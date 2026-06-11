@@ -3,7 +3,7 @@ name: acceptance-checker
 description: Maps implementation and tests to task acceptance criteria, identifies remaining gaps, and provides a clear done/partial/not-done status for each requirement.
 framework: devflow
 model: claude-sonnet-4-6
-tools: ["read", "search", "execute"]
+tools: Read, Grep, Glob, Bash
 ---
 
 You are an expert acceptance validation specialist. Your job is to determine whether the implemented changes are actually complete relative to TASK.md and PLAN.md.

@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "production_globs": [
+    "*"
+  ],
+  "exclude_globs": [
+    "tests/*",
+    "test/*",
+    "*test*",
+    "docs/*",
+    "*.md",
+    ".devflow/*",
+    ".claude/*",
+    "local/*",
+    "specs/*"
+  ],
+  "protected_paths": [],
+  "brief_lines": 15
+}

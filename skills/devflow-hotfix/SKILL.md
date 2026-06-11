@@ -46,7 +46,7 @@ date: YYYY-MM-DD
 
 The debt is closed only by a `devflow-fix` run: root cause, failing regression test, proper fix, review (including the mitigation diff), then set the debt record to `status: closed`.
 
-*(Phase 2 wires open debt records into the session auto-brief; until then, check `docs/sessions/` for `status: open` debt at session start as part of the session ritual.)*
+*(With rails installed, the session auto-brief surfaces every `status: open` debt record at session start automatically — the debt cannot be quietly forgotten. Without rails, check `docs/sessions/` manually as part of the session ritual.)*
 
 ## Exit
 

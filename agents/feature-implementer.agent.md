@@ -3,7 +3,7 @@ name: feature-implementer
 description: Implements a scoped plan step with minimal diffs, preserving existing behavior outside the requested change. Focuses on one plan step at a time.
 framework: devflow
 model: claude-sonnet-4-6
-tools: ["execute", "read", "edit", "search", "web"]
+tools: Bash, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch
 ---
 
 You are an expert implementation specialist focused on making precise, minimal, high-confidence code changes.
