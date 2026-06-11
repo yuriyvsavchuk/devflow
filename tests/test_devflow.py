@@ -5,6 +5,7 @@ Run:  python -m unittest discover tests -v   (from the repo root)
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -888,6 +889,59 @@ class TestDigest(GitFixtureBase):
         with open(self.root / ".devflow" / "runs.jsonl", "a", encoding="utf-8") as fh:
             fh.write("{broken json\n")
         self.assertTrue(devflow.cmd_digest(self.root))
+
+
+class TestVerifySkipFlag(GitFixtureBase):
+    """CI cannot run out-of-band (the ledger is gitignored) — --skip makes
+    that exclusion explicit and visible, never silent."""
+
+    def test_skip_turns_check_into_note(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=1))  # would flag
+        findings, notes = devflow.cmd_verify(self.root, skip=("out-of-band",))
+        self.assertFalse(self.findings_for("out-of-band", findings))
+        self.assertTrue(any("request" in n
+                            for n in self.notes_for("out-of-band", notes)))
+
+    def test_skip_via_main_cli(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=1))
+        rc = devflow.main(["--root", str(self.root), "verify", "--strict",
+                           "--skip", "out-of-band"])
+        self.assertEqual(rc, 0)  # the only finding source was skipped
+
+
+class TestCiTemplates(unittest.TestCase):
+    REPO = Path(__file__).resolve().parent.parent
+
+    def read(self, name):
+        return (self.REPO / "ci" / "github-actions" / name).read_text(encoding="utf-8")
+
+    def test_verify_template_essentials(self):
+        text = self.read("devflow-verify.yml")
+        self.assertIn("pull_request", text)
+        self.assertIn(".devflow/devflow.py", text)       # fork-safe guard target
+        self.assertIn("--skip out-of-band", text)         # ledger is gitignored
+        self.assertIn("--strict", text)
+        self.assertIn("STRICT_GATE", text)                # documented hard-gate switch
+        self.assertIn("fetch-depth: 0", text)             # git-date checks need history
+
+    def test_protected_gate_template_essentials(self):
+        text = self.read("protected-todo-gate.yml")
+        self.assertIn("pull_request", text)
+        self.assertIn("TODO: \\[PROTECTED", text)
+        self.assertIn("exit 1", text)                     # this one IS a gate
+
+    def test_added_line_regex_behavior(self):
+        """The gate greps only ADDED diff lines for the protected marker."""
+        pattern = re.compile(r"^\+.*TODO: \[PROTECTED", re.M)
+        diff = ("+++ b/src/auth/login.py\n"
+                "+    # TODO: [PROTECTED — human authorship required: token check]\n"
+                "-    # TODO: [PROTECTED — removed marker]\n"
+                "     # TODO: [PROTECTED — context line, unchanged]\n")
+        hits = pattern.findall(diff)
+        self.assertEqual(len(hits), 1)
+        self.assertNotIn("removed", hits[0])
 
 
 class TestVerifyStrictExit(VerifyBase):

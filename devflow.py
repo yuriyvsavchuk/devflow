@@ -697,13 +697,18 @@ _VERIFY_CHECKS = [
 ]
 
 
-def cmd_verify(root, window_days=None):
-    """Run all structural checks → (findings, notes); never raises."""
+def cmd_verify(root, window_days=None, skip=()):
+    """Run all structural checks → (findings, notes); never raises.
+    `skip` excludes checks by name, visibly (a note, never silence) — CI uses
+    it for out-of-band, whose ledger input is gitignored and absent there."""
     findings, notes = [], []
     try:
         cfg = load_config(root)
         window = window_days or cfg.get("verify_window_days", 14)
         for name, fn in _VERIFY_CHECKS:
+            if name in skip:
+                notes.append((name, "skipped by request (--skip)"))
+                continue
             try:
                 f, n = fn(root, cfg, window)
             except Exception as exc:
@@ -942,6 +947,8 @@ def main(argv=None):
     p.add_argument("--strict", action="store_true",
                    help="exit 1 when any finding exists")
     p.add_argument("--window-days", type=int, default=None)
+    p.add_argument("--skip", action="append", default=[], metavar="CHECK",
+                   help="exclude a check by name (repeatable); noted, not silent")
 
     p = sub.add_parser("digest", help="windowed summary of recent runs/debt/decisions")
     p.add_argument("--days", type=int, default=None)
@@ -991,7 +998,8 @@ def main(argv=None):
         elif args.command == "digest":
             print("\n".join(cmd_digest(root, days=args.days)))
         elif args.command == "verify":
-            findings, notes = cmd_verify(root, window_days=args.window_days)
+            findings, notes = cmd_verify(root, window_days=args.window_days,
+                                         skip=tuple(args.skip))
             for check, msg in findings:
                 print(f"[verify] {check}: {msg}")
             for check, reason in notes:
