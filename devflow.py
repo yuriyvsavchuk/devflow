@@ -191,6 +191,8 @@ DEFAULT_CONFIG = {
                       ".devflow/*", ".claude/*", "local/*", "specs/*"],
     "protected_paths": [],
     "brief_lines": 15,
+    "verify_window_days": 14,
+    "contract_map": {},
 }
 
 _RED_DENY_MSG = (
@@ -415,9 +417,10 @@ def _read_text_safe(path):
 
 
 def _check_spec_links(root, cfg, window_days):
+    """All checks return (findings, notes)."""
     specs_dir = Path(root) / "docs" / "specs"
     if not specs_dir.is_dir():
-        return ("skip", "no docs/specs/ directory")
+        return [], ["no docs/specs/ directory"]
 
     findings = []
     spec_acs = {}
@@ -443,7 +446,7 @@ def _check_spec_links(root, cfg, window_days):
                 findings.append(
                     f"{plan.name} references {ac}, not defined in "
                     f"docs/specs/{ref.group(1)}")
-    return findings
+    return findings, []
 
 
 def _git_run(root, *args):
@@ -493,12 +496,12 @@ _OOB_SLACK = 120  # seconds — ledger has second precision; tolerate clock skew
 
 def _check_out_of_band(root, cfg, window_days):
     if not _is_git_repo(root):
-        return ("skip", "not a git repository")
+        return [], ["not a git repository"]
     try:
         out = _git_run(root, "log", f"--since={window_days} days ago",
                        "--format=%h %ct")
     except RuntimeError:
-        return []  # no commits yet (fresh repo)
+        return [], []  # no commits yet (fresh repo)
     commits = []
     for line in out.splitlines():
         try:
@@ -507,26 +510,116 @@ def _check_out_of_band(root, cfg, window_days):
         except ValueError:
             continue
     if not commits:
-        return []
+        return [], []
     intervals = _run_intervals(root)
     oob = [h for h, ct in commits
            if not any(s - _OOB_SLACK <= ct <= f + _OOB_SLACK
                       for s, f in intervals)]
     if not oob:
-        return []
+        return [], []
     sample = ", ".join(oob[:3])
     if not intervals:
         return [f"{len(oob)} commit(s) in the last {window_days} days with no "
                 f"recorded runs (e.g. {sample}) — expected if you commit manually; "
-                f"playbook runs record themselves"]
+                f"playbook runs record themselves"], []
     return [f"{len(oob)} of {len(commits)} commit(s) in the last {window_days} "
             f"days fall outside any run window (e.g. {sample}) — expected if "
-            f"made manually"]
+            f"made manually"], []
+
+
+def _last_commit_epoch(root, pathspec):
+    try:
+        out = _git_run(root, "log", "-1", "--format=%ct", "--", pathspec).strip()
+        return int(out) if out else None
+    except (RuntimeError, ValueError):
+        return None
+
+
+def _day(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%d")
+
+
+def _check_contract_stale(root, cfg, window_days):
+    idir = Path(root) / "docs" / "interfaces"
+    if not idir.is_dir():
+        return [], ["no docs/interfaces/ directory"]
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    contracts = [p for p in sorted(idir.glob("*"))
+                 if p.is_file() and p.name != "index.md"]
+    if not contracts:
+        return [], ["no contract files"]
+
+    cmap = cfg.get("contract_map") or {}
+    findings, unmapped = [], []
+    for contract in contracts:
+        rel = contract.relative_to(root).as_posix()
+        globs = cmap.get(rel)
+        if not globs:
+            unmapped.append(contract.name)
+            continue
+        c_ep = _last_commit_epoch(root, rel)
+        if c_ep is None:
+            continue  # uncommitted contract — nothing to compare yet
+        for g in globs:
+            i_ep = _last_commit_epoch(root, g)
+            if i_ep and i_ep > c_ep:
+                findings.append(
+                    f"{rel} last changed {_day(c_ep)} but mapped implementation "
+                    f"'{g}' changed {_day(i_ep)} — contract may be stale")
+                break
+    notes = ([f"{len(unmapped)} contract(s) unmapped — add them to "
+              f"contract_map in .devflow/config.json to enable this check"]
+             if unmapped else [])
+    return findings, notes
+
+
+_ADR_STATUS_RE = re.compile(r"\*\*Status:\*\*\s*(\w+)")
+_ADR_RELATES_RE = re.compile(r"(?m)^(?:\*\*Relates-to:\*\*|relates-to:)\s*(.+)$")
+
+
+def _check_adr_stale(root, cfg, window_days):
+    ddir = Path(root) / "docs" / "decisions"
+    if not ddir.is_dir():
+        return [], ["no docs/decisions/ directory"]
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    adrs = [p for p in sorted(ddir.glob("*.md")) if p.name != "index.md"]
+    if not adrs:
+        return [], ["no ADR files"]
+
+    findings, without = [], 0
+    for adr in adrs:
+        head = _read_text_safe(adr)[:1500]
+        sm = _ADR_STATUS_RE.search(head)
+        if not sm or sm.group(1).lower() != "accepted":
+            continue
+        rm = _ADR_RELATES_RE.search(head)
+        if not rm:
+            without += 1
+            continue
+        globs = [g.strip() for g in rm.group(1).split(",") if g.strip()]
+        a_ep = _last_commit_epoch(root, adr.relative_to(root).as_posix())
+        if a_ep is None:
+            continue
+        for g in globs:
+            i_ep = _last_commit_epoch(root, g)
+            if i_ep and i_ep > a_ep:
+                findings.append(
+                    f"{adr.name} (Accepted) untouched since {_day(a_ep)} while "
+                    f"related '{g}' changed {_day(i_ep)} — verify the decision "
+                    f"still holds")
+                break
+    notes = ([f"{without} Accepted ADR(s) without Relates-to — staleness "
+              f"not checkable"] if without else [])
+    return findings, notes
 
 
 _VERIFY_CHECKS = [
     ("spec-links", _check_spec_links),
     ("out-of-band", _check_out_of_band),
+    ("contract-stale", _check_contract_stale),
+    ("adr-stale", _check_adr_stale),
 ]
 
 
@@ -538,14 +631,12 @@ def cmd_verify(root, window_days=None):
         window = window_days or cfg.get("verify_window_days", 14)
         for name, fn in _VERIFY_CHECKS:
             try:
-                result = fn(root, cfg, window)
+                f, n = fn(root, cfg, window)
             except Exception as exc:
                 notes.append((name, f"check failed safely ({exc.__class__.__name__})"))
                 continue
-            if isinstance(result, tuple) and result and result[0] == "skip":
-                notes.append((name, result[1]))
-            else:
-                findings.extend((name, msg) for msg in result)
+            findings.extend((name, msg) for msg in f)
+            notes.extend((name, msg) for msg in n)
     except Exception:
         pass  # verify is advisory tooling — never break the caller
     return findings, notes

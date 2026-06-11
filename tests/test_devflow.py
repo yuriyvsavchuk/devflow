@@ -707,6 +707,99 @@ class TestVerifyOutOfBand(GitFixtureBase):
         self.assertFalse(self.findings_for("out-of-band", findings))
 
 
+class TestVerifyContractStale(GitFixtureBase):
+    def set_config(self, **overrides):
+        cfg = dict(devflow.DEFAULT_CONFIG)
+        cfg.update(overrides)
+        (self.root / ".devflow" / "config.json").write_text(
+            json.dumps(cfg), encoding="utf-8")
+
+    def test_stale_contract_flagged(self):
+        self.init_repo()
+        self.commit_at("docs/interfaces/users-api.yaml", self.now() - timedelta(days=3))
+        self.commit_at("src/api/users.py", self.now() - timedelta(days=1))
+        self.set_config(contract_map={"docs/interfaces/users-api.yaml": ["src/api/*"]})
+        findings, _ = self.run_verify()
+        hits = self.findings_for("contract-stale", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("users-api.yaml", hits[0])
+
+    def test_fresh_contract_clean(self):
+        self.init_repo()
+        self.commit_at("src/api/users.py", self.now() - timedelta(days=3))
+        self.commit_at("docs/interfaces/users-api.yaml", self.now() - timedelta(days=1))
+        self.set_config(contract_map={"docs/interfaces/users-api.yaml": ["src/api/*"]})
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("contract-stale", findings))
+
+    def test_unmapped_contract_noted(self):
+        self.init_repo()
+        self.commit_at("docs/interfaces/orders-api.yaml", self.now() - timedelta(days=1))
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("contract-stale", findings))
+        self.assertTrue(any("contract_map" in n
+                            for n in self.notes_for("contract-stale", notes)))
+
+    def test_no_interfaces_dir_skips(self):
+        self.init_repo()
+        _, notes = self.run_verify()
+        self.assertTrue(self.notes_for("contract-stale", notes))
+
+
+class TestVerifyAdrStale(GitFixtureBase):
+    def write_adr(self, name, status="Accepted", relates_to="src/auth/*",
+                  when=None):
+        rel_line = f"**Relates-to:** {relates_to}\n" if relates_to else ""
+        content = (f"# ADR-{name[:4]}: demo decision\n\n"
+                   f"**Date:** 2026-06-01\n**Status:** {status}\n{rel_line}\n"
+                   f"## Context\n\nx\n")
+        p = self.root / "docs" / "decisions" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        stamp = f"@{int((when or self.now()).timestamp())} +0000"
+        self.git("add", f"docs/decisions/{name}")
+        self.git("commit", "-q", "-m", f"adr {name}",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+
+    def test_stale_adr_flagged(self):
+        self.init_repo()
+        self.write_adr("0001-auth-model.md", when=self.now() - timedelta(days=5))
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("adr-stale", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("0001-auth-model.md", hits[0])
+
+    def test_adr_newer_than_churn_clean(self):
+        self.init_repo()
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=5))
+        self.write_adr("0001-auth-model.md", when=self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+
+    def test_accepted_without_relates_to_noted(self):
+        self.init_repo()
+        self.write_adr("0002-naming.md", relates_to=None,
+                       when=self.now() - timedelta(days=2))
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+        self.assertTrue(any("Relates-to" in n
+                            for n in self.notes_for("adr-stale", notes)))
+
+    def test_superseded_ignored(self):
+        self.init_repo()
+        self.write_adr("0003-old.md", status="Superseded",
+                       when=self.now() - timedelta(days=5))
+        self.commit_at("src/auth/login.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("adr-stale", findings))
+
+    def test_no_adrs_skips(self):
+        self.init_repo()
+        _, notes = self.run_verify()
+        self.assertTrue(self.notes_for("adr-stale", notes))
+
+
 class TestVerifyStrictExit(VerifyBase):
     def test_strict_exit_codes_via_main(self):
         self.write_spec("bad.md", status="agreed", acs=())
