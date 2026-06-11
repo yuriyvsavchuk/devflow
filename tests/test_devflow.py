@@ -389,6 +389,23 @@ class TestStopCheck(StateCoreBase):
         self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "Stop")
         self.assertIn("open", out["hookSpecificOutput"]["additionalContext"])
 
+    def test_advisory_debounced_within_an_hour(self):
+        """Live finding: each advisory re-invokes the model -> nudge loop.
+        Only the first stop in an hour may nudge."""
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        first = devflow.cmd_stop_check(self.root)
+        self.assertIsNotNone(first)
+        second = devflow.cmd_stop_check(self.root)
+        self.assertIsNone(second)
+
+    def test_advisory_returns_after_debounce_window(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        devflow.cmd_stop_check(self.root)
+        st = devflow.load_state(self.root)
+        st["stop_nudged_epoch"] = st["stop_nudged_epoch"] - 3700
+        devflow.save_state(self.root, st)
+        self.assertIsNotNone(devflow.cmd_stop_check(self.root))
+
     def test_accepted_run_silent(self):
         devflow.cmd_start(self.root, "spike", tier="quick", task="t")
         devflow.cmd_mark(self.root, "accepted")

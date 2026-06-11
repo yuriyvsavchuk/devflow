@@ -339,11 +339,18 @@ def cmd_brief(root):
 
 
 def cmd_stop_check(root):
-    """Advisory-only Stop output (D23): a dict to print as JSON, or None."""
+    """Advisory-only Stop output (D23): a dict to print as JSON, or None.
+    Debounced to once per hour — the harness re-invokes the model on Stop
+    additionalContext, so an un-debounced advisory loops (found live)."""
     try:
         state = load_state(root)
         if state is None or state.get("phase") == "accepted":
             return None
+        now_ep = datetime.now(timezone.utc).timestamp()
+        if now_ep - state.get("stop_nudged_epoch", 0) < 3600:
+            return None
+        state["stop_nudged_epoch"] = now_ep
+        save_state(root, state)
         return {"hookSpecificOutput": {
             "hookEventName": "Stop",
             "additionalContext": (
