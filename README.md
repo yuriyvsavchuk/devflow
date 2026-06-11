@@ -36,11 +36,12 @@ The user's one-word override always wins: `quick: fix the date format` / `full: 
 
 ## Rails — what's enforced vs guided
 
-Install once per project (the project root must be the directory you open Claude Code in):
+Install once per project — run from **your project's root** (the directory you open Claude Code in), pointing at the framework's copy:
 
 ```sh
-python devflow.py init              # scaffolds .devflow/, wires hooks merge-safe into .claude/settings.json
-python .devflow/devflow.py doctor   # health check
+cd /path/to/your-project
+python /path/to/devflow/devflow.py init   # scaffolds .devflow/, wires hooks merge-safe into .claude/settings.json
+python .devflow/devflow.py doctor         # health check (your project now has its own pinned copy)
 ```
 
 Prerequisites: Python 3 on PATH; on Windows, Git Bash (ships with Git for Windows — hooks run shell commands through it).

@@ -262,6 +262,37 @@ class TestGateRedPhase(GateBase):
         code, _ = self.gate(self.root / "src" / "app.py")
         self.assertEqual(code, 2)
 
+    def test_no_tdd_exception_re_arms_after_loop_back(self):
+        """Review finding: a loop-back to a pre-red phase invalidates the
+        earlier --no-tdd exception — the gate must re-arm."""
+        devflow.cmd_start(self.root, "build", tier="standard", task="t")
+        devflow.cmd_mark(self.root, "plan-confirmed")
+        devflow.cmd_mark(self.root, "implemented", no_tdd_reason="post-spike")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)  # exception in effect
+        devflow.cmd_mark(self.root, "plan-confirmed", no_tdd_reason="rework")
+        code, msg = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 2)  # re-armed
+        self.assertIn("red", msg.lower())
+
+    def test_gate_notebook_path(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        payload = json.dumps({"tool_name": "NotebookEdit",
+                              "tool_input": {"notebook_path":
+                                             str(self.root / "src" / "nb.ipynb")},
+                              "cwd": str(self.root)})
+        code, _ = devflow.cmd_gate(self.root, payload)
+        self.assertEqual(code, 2)
+
+    def test_gate_null_config_values_fail_open(self):
+        self.write_config(enabled=None, protected_paths=["*"])
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)  # enabled=null -> disabled
+        self.write_config(protected_paths=None)
+        devflow.cmd_start(self.root, "shape", tier="standard", task="t")
+        code, _ = self.gate(self.root / "src" / "app.py")
+        self.assertEqual(code, 0)  # null list -> fail-open, no crash
+
 
 class TestGateFailOpen(GateBase):
     def test_malformed_stdin_allows(self):
@@ -460,6 +491,47 @@ class TestInitDoctor(unittest.TestCase):
         (self.root / ".claude" / "settings.json").unlink()
         checks = dict((c[0], c[1]) for c in devflow.cmd_doctor(self.root))
         self.assertFalse(checks["hooks wired"])
+
+    def test_init_rejects_malformed_hooks_value(self):
+        """Review finding: a string where a hooks list belongs must raise a
+        readable DevflowError, not an AttributeError."""
+        sp = self.root / ".claude" / "settings.json"
+        sp.parent.mkdir(parents=True)
+        sp.write_text(json.dumps({"hooks": {"PreToolUse": "bad_string"}}),
+                      encoding="utf-8")
+        with self.assertRaises(devflow.DevflowError):
+            devflow.cmd_init(self.root)
+
+
+class TestBashCheck(unittest.TestCase):
+    """Review finding: WSL's bash on PATH must not produce a false PASS,
+    and Git Bash reachable via git's install dir must not produce a false FAIL."""
+
+    WSL = "GNU bash, version 5.1.16(1)-release (x86_64-pc-linux-gnu)"
+    GIT = "GNU bash, version 5.2.26(1)-release (x86_64-pc-msys)"
+
+    def test_wsl_bash_rejected(self):
+        ok, detail = devflow._bash_check(
+            platform="win32", candidates=[r"C:\WINDOWS\system32\bash.EXE"],
+            version_runner=lambda p: self.WSL)
+        self.assertFalse(ok)
+        self.assertIn("Git", detail)
+
+    def test_git_bash_accepted_even_when_wsl_first(self):
+        cands = [r"C:\WINDOWS\system32\bash.EXE", r"C:\Program Files\Git\bin\bash.exe"]
+        ok, detail = devflow._bash_check(
+            platform="win32", candidates=cands,
+            version_runner=lambda p: self.WSL if "system32" in p.lower() else self.GIT)
+        self.assertTrue(ok)
+        self.assertIn("Git", detail)
+
+    def test_no_bash_fails(self):
+        ok, _ = devflow._bash_check(platform="win32", candidates=[])
+        self.assertFalse(ok)
+
+    def test_posix_passes(self):
+        ok, _ = devflow._bash_check(platform="linux", candidates=[])
+        self.assertTrue(ok)
 
 
 class TestStats(StateCoreBase):

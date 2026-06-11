@@ -67,11 +67,12 @@ rm -f  ~/.claude/agents/research.agent.md ~/.claude/agents/api-researcher.agent.
 
 ## Phase 2 upgrade — the rails (shipped)
 
-Pull the latest framework, then per project:
+Pull the latest framework, then per project — run `init` **from your project's root**, pointing at the framework's copy (running it inside the framework repo would scaffold the framework itself):
 
 ```sh
-python devflow.py init              # one command: .devflow/ + hooks (merge-safe, idempotent, .bak before first change)
-python .devflow/devflow.py doctor   # verify: python, Git Bash (Windows), hooks wired, version match
+cd /path/to/your-project
+python /path/to/devflow/devflow.py init   # one command: .devflow/ + hooks (merge-safe, idempotent, .bak before first change)
+python .devflow/devflow.py doctor         # verify: python, Git Bash (Windows), hooks wired, version match
 ```
 
 What changes day-to-day:

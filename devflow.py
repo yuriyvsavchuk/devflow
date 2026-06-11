@@ -11,9 +11,12 @@ Exit codes: 0 success/allow · 1 command error · 2 gate denial (reserved).
 """
 
 import argparse
+import fnmatch
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -223,7 +226,6 @@ def _relativize(file_path, root):
 
 
 def _match_any(rel_path, patterns):
-    import fnmatch
     return any(fnmatch.fnmatch(rel_path, pat) for pat in patterns)
 
 
@@ -256,10 +258,11 @@ def cmd_gate(root, raw_stdin):
         if state.get("tier") == "quick":
             return 0, None
 
+        # The current-phase index alone decides: a --no-tdd exception moves the
+        # phase past RED (cmd_mark validates the reason), and a loop-back to a
+        # pre-RED phase re-arms the gate — old exceptions do not survive it.
         seq = PHASES[state["playbook"]]
         if seq.index(state["phase"]) >= seq.index(RED_PHASE):
-            return 0, None
-        if any(m.get("no_tdd") for m in state["marks"]):
             return 0, None
 
         if _match_any(rel, cfg["production_globs"]) and not _match_any(rel, cfg["exclude_globs"]):
@@ -405,6 +408,8 @@ HOOK_WIRING = (
     ("PreToolUse", "Edit|Write|MultiEdit|NotebookEdit", "gate"),
     ("Stop", None, "stop-check"),
 )
+# Note: user projects commit .devflow/devflow.py as their pinned copy — only the
+# framework repo itself additionally ignores it (added by hand in its .gitignore).
 _GITIGNORE_LINES = (".devflow/state.json", ".devflow/state.json.corrupt",
                     ".devflow/runs.jsonl")
 
@@ -424,7 +429,7 @@ def cmd_init(root):
     src = Path(__file__).resolve()
     dest = dd / "devflow.py"
     if src != dest.resolve():
-        dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        _atomic_write(dest, src.read_text(encoding="utf-8"))
         summary.append(f"devflow.py {VERSION} copied into .devflow/")
 
     sp = root / ".claude" / "settings.json"
@@ -436,17 +441,23 @@ def cmd_init(root):
         raise DevflowError(f"{sp} is not valid JSON — fix it before init")
     hooks = settings.setdefault("hooks", {})
     modified = False
-    for event, matcher, cmd in HOOK_WIRING:
-        entries = hooks.setdefault(event, [])
-        cmd_str = _HOOK_CMD.format(cmd=cmd)
-        wired = any(h.get("command") == cmd_str
-                    for entry in entries for h in entry.get("hooks", []))
-        if not wired:
-            entry = {"hooks": [{"type": "command", "command": cmd_str, "timeout": 10}]}
-            if matcher:
-                entry["matcher"] = matcher
-            entries.append(entry)
-            modified = True
+    try:
+        for event, matcher, cmd in HOOK_WIRING:
+            entries = hooks.setdefault(event, [])
+            cmd_str = _HOOK_CMD.format(cmd=cmd)
+            wired = any(h.get("command") == cmd_str
+                        for entry in entries for h in entry.get("hooks", []))
+            if not wired:
+                entry = {"hooks": [{"type": "command", "command": cmd_str,
+                                    "timeout": 10}]}
+                if matcher:
+                    entry["matcher"] = matcher
+                entries.append(entry)
+                modified = True
+    except (AttributeError, TypeError):
+        raise DevflowError(
+            f"{sp} has an unexpected hooks structure (an event's value must be "
+            "a list of matcher entries) — fix it before init")
     if modified:
         bak = sp.with_suffix(".json.bak")
         if original_text is not None and not bak.exists():
@@ -469,16 +480,60 @@ def cmd_init(root):
     return summary or ["already initialized — nothing to do"]
 
 
+def _bash_version(path):
+    return subprocess.run([path, "--version"], capture_output=True, text=True,
+                          timeout=5).stdout
+
+
+def _git_bash_candidates():
+    """bash on PATH plus bash inside the Git for Windows install dir —
+    Claude Code uses Git Bash even when WSL's bash shadows it on PATH."""
+    out = []
+    b = shutil.which("bash")
+    if b:
+        out.append(str(Path(b)))
+    g = shutil.which("git")
+    if g:
+        groot = Path(g).resolve().parent
+        for rel in ("../bin/bash.exe", "../usr/bin/bash.exe",
+                    "../../bin/bash.exe", "../../usr/bin/bash.exe"):
+            c = (groot / rel).resolve()
+            if c.exists() and str(c) not in out:
+                out.append(str(c))
+    return out
+
+
+def _bash_check(platform=None, candidates=None, version_runner=None):
+    """(ok, detail): is a Git Bash (msys/mingw) available for hook execution?
+    WSL's bash is not it — it resolves paths against the Linux filesystem."""
+    platform = platform or sys.platform
+    if platform != "win32":
+        return True, "POSIX shell"
+    cands = candidates if candidates is not None else _git_bash_candidates()
+    if not cands:
+        return False, "bash not found — install Git for Windows"
+    probe = version_runner or _bash_version
+    non_git = None
+    for cand in cands:
+        try:
+            out = probe(cand).lower()
+        except Exception:
+            continue
+        if "msys" in out or "mingw" in out:
+            return True, cand
+        non_git = cand
+    return False, (f"{non_git or cands[0]} is not Git Bash (WSL?) — "
+                   "install Git for Windows")
+
+
 def cmd_doctor(root):
     """Install health checks: list of (name, ok, detail) (AC-6)."""
-    import shutil
     root = Path(root)
     checks = []
 
     checks.append(("python", True, sys.executable))
-    bash_ok = shutil.which("bash") is not None or sys.platform != "win32"
-    checks.append(("bash (hook shell on Windows)", bash_ok,
-                   shutil.which("bash") or "not found — install Git for Windows"))
+    bash_ok, bash_detail = _bash_check()
+    checks.append(("bash (hook shell on Windows)", bash_ok, bash_detail))
 
     dd = devflow_dir(root)
     try:
@@ -538,6 +593,9 @@ def resolve_root():
 
 
 def main(argv=None):
+    # argparse exits 2 on bad arguments — in a PreToolUse hook the harness would
+    # read that as a deliberate denial. Hook command strings are fixed by init,
+    # so this cannot fire from wired hooks; keep it that way.
     parser = argparse.ArgumentParser(prog="devflow", description=__doc__)
     parser.add_argument("--root", default=None, help="project root (default: auto)")
     sub = parser.add_subparsers(dest="command", required=True)
