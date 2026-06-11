@@ -446,8 +446,87 @@ def _check_spec_links(root, cfg, window_days):
     return findings
 
 
+def _git_run(root, *args):
+    out = subprocess.run(["git", "-C", str(root), *args],
+                         capture_output=True, text=True, timeout=30)
+    if out.returncode != 0:
+        raise RuntimeError(out.stderr.strip()[:160])
+    return out.stdout
+
+
+def _is_git_repo(root):
+    try:
+        return _git_run(root, "rev-parse", "--is-inside-work-tree").strip() == "true"
+    except Exception:
+        return False
+
+
+def _ledger_epoch(iso_text):
+    return datetime.strptime(iso_text, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=timezone.utc).timestamp()
+
+
+def _run_intervals(root):
+    """[(start_epoch, finish_epoch)] from the ledger, plus the open run."""
+    intervals = []
+    lp = ledger_path(root)
+    if lp.exists():
+        for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines():
+            try:
+                rec = json.loads(line)
+                intervals.append((_ledger_epoch(rec["started"]),
+                                  _ledger_epoch(rec["finished"])))
+            except Exception:
+                continue
+    state = load_state(root)
+    if state:
+        try:
+            intervals.append((_ledger_epoch(state["started"]),
+                              datetime.now(timezone.utc).timestamp()))
+        except Exception:
+            pass
+    return intervals
+
+
+_OOB_SLACK = 120  # seconds — ledger has second precision; tolerate clock skew
+
+
+def _check_out_of_band(root, cfg, window_days):
+    if not _is_git_repo(root):
+        return ("skip", "not a git repository")
+    try:
+        out = _git_run(root, "log", f"--since={window_days} days ago",
+                       "--format=%h %ct")
+    except RuntimeError:
+        return []  # no commits yet (fresh repo)
+    commits = []
+    for line in out.splitlines():
+        try:
+            h, ct = line.split()
+            commits.append((h, int(ct)))
+        except ValueError:
+            continue
+    if not commits:
+        return []
+    intervals = _run_intervals(root)
+    oob = [h for h, ct in commits
+           if not any(s - _OOB_SLACK <= ct <= f + _OOB_SLACK
+                      for s, f in intervals)]
+    if not oob:
+        return []
+    sample = ", ".join(oob[:3])
+    if not intervals:
+        return [f"{len(oob)} commit(s) in the last {window_days} days with no "
+                f"recorded runs (e.g. {sample}) — expected if you commit manually; "
+                f"playbook runs record themselves"]
+    return [f"{len(oob)} of {len(commits)} commit(s) in the last {window_days} "
+            f"days fall outside any run window (e.g. {sample}) — expected if "
+            f"made manually"]
+
+
 _VERIFY_CHECKS = [
     ("spec-links", _check_spec_links),
+    ("out-of-band", _check_out_of_band),
 ]
 
 

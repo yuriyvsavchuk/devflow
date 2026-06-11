@@ -4,9 +4,12 @@ Run:  python -m unittest discover tests -v   (from the repo root)
 """
 
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -618,6 +621,90 @@ class TestVerifySpecLinks(VerifyBase):
         (self.root / "docs" / "specs" / "binary.md").write_bytes(b"\xff\xfe\x00garbage")
         findings, notes = self.run_verify()  # must not raise
         self.assertIsInstance(findings, list)
+
+
+class GitFixtureBase(VerifyBase):
+    """Real temp git repos with controlled commit timestamps."""
+
+    LEDGER_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+    def git(self, *args, env_extra=None):
+        env = dict(os.environ)
+        if env_extra:
+            env.update(env_extra)
+        subprocess.run(["git", "-C", str(self.root), *args],
+                       check=True, capture_output=True, env=env)
+
+    def init_repo(self):
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@test.local")
+        self.git("config", "user.name", "tester")
+
+    def commit_at(self, relpath, when_utc):
+        p = self.root / relpath
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"content at {when_utc.isoformat()}\n", encoding="utf-8")
+        stamp = f"@{int(when_utc.timestamp())} +0000"
+        self.git("add", relpath)
+        self.git("commit", "-q", "-m", f"commit {relpath}",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+
+    def seed_run(self, started_utc, finished_utc):
+        rec = {"run_id": "r", "playbook": "build", "tier": "standard", "task": "t",
+               "started": started_utc.strftime(self.LEDGER_FMT),
+               "finished": finished_utc.strftime(self.LEDGER_FMT),
+               "status": "completed", "loop_backs": 0, "marks": 1}
+        with open(self.root / ".devflow" / "runs.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+
+    @staticmethod
+    def now():
+        return datetime.now(timezone.utc)
+
+
+class TestVerifyOutOfBand(GitFixtureBase):
+    def test_commit_inside_run_window_clean(self):
+        self.init_repo()
+        t = self.now() - timedelta(hours=5)
+        self.commit_at("src/a.py", t)
+        self.seed_run(t - timedelta(hours=1), t + timedelta(hours=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("out-of-band", findings))
+
+    def test_commit_outside_all_windows_flagged(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=2))
+        far = self.now() - timedelta(days=10)
+        self.seed_run(far, far + timedelta(hours=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("out-of-band", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("1 of 1", hits[0])
+
+    def test_open_run_covers_recent_commit(self):
+        self.init_repo()
+        devflow.cmd_start(self.root, "build", tier="standard", task="t")
+        self.commit_at("src/b.py", self.now())
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("out-of-band", findings))
+
+    def test_non_git_root_skips(self):
+        findings, notes = self.run_verify()
+        self.assertTrue(any("git" in n.lower()
+                            for n in self.notes_for("out-of-band", notes)))
+
+    def test_no_runs_uses_manual_framing(self):
+        self.init_repo()
+        self.commit_at("src/a.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("out-of-band", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("manual", hits[0])
+
+    def test_empty_repo_clean(self):
+        self.init_repo()  # no commits at all
+        findings, notes = self.run_verify()
+        self.assertFalse(self.findings_for("out-of-band", findings))
 
 
 class TestVerifyStrictExit(VerifyBase):
