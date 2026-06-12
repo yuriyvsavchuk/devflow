@@ -1,0 +1,13 @@
+{
+  "playbook": null,
+  "tier": null,
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you. Devflow rails are installed; apply devflow-dispatch rules to decide whether this needs a playbook run at all. Yes, looks good - please continue.",
+  "fixtures": {},
+  "assertions": [
+    {
+      "type": "no_run_opened"
+    }
+  ],
+  "name": "neg-continue"
+}

@@ -1,0 +1,44 @@
+{
+  "playbook": "shape",
+  "tier": "standard",
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. Task: shape a small 'recently viewed items' feature for a shop app. Produce ONLY a spec at docs/specs/recently-viewed.md (front-matter type: spec, status: agreed; numbered '- AC-n:' criteria) and a plan at docs/plans/recently-viewed-plan.md that references the spec path and its AC ids.",
+  "fixtures": {},
+  "assertions": [
+    {
+      "type": "file_exists",
+      "path": "docs/specs/recently-viewed.md"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/specs/recently-viewed.md",
+      "pattern": "(?m)^\\s*-\\s*AC-\\d+:"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/specs/recently-viewed.md",
+      "pattern": "(?m)^status:\\s*agreed"
+    },
+    {
+      "type": "file_exists",
+      "path": "docs/plans/recently-viewed-plan.md"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/plans/recently-viewed-plan.md",
+      "pattern": "docs/specs/recently-viewed\\.md"
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "shape",
+      "status": "completed"
+    },
+    {
+      "type": "state_phases",
+      "expect": [
+        "accepted"
+      ]
+    }
+  ],
+  "name": "shape-basic"
+}

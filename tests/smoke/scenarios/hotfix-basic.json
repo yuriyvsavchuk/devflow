@@ -1,0 +1,31 @@
+{
+  "playbook": "hotfix",
+  "tier": "standard",
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. PRODUCTION INCIDENT: the orders endpoint in app.py returns 500 for every user since today's deploy (the FEATURE_X block). Mitigate NOW with the smallest safe change, verify by importing and calling app.orders_endpoint, and record the debt at docs/sessions/hotfix-debt-orders-500.md (front-matter type: hotfix-debt, status: open) per the hotfix playbook.",
+  "fixtures": {
+    "app.py": "fixtures/hotfix-basic/app.py"
+  },
+  "assertions": [
+    {
+      "type": "file_exists",
+      "path": "docs/sessions/hotfix-debt-orders-500.md"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/sessions/hotfix-debt-orders-500.md",
+      "pattern": "(?m)^status:\\s*open"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/sessions/hotfix-debt-orders-500.md",
+      "pattern": "(?i)owed"
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "hotfix",
+      "status": "completed"
+    }
+  ],
+  "name": "hotfix-basic"
+}

@@ -1,0 +1,20 @@
+{
+  "playbook": null,
+  "tier": null,
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you. Devflow rails are installed; apply devflow-dispatch rules to decide whether this needs a playbook run at all. Task: fix the typo 'recieve' in notes.md.",
+  "fixtures": {
+    "notes.md": "fixtures/neg-trivial/notes.md"
+  },
+  "assertions": [
+    {
+      "type": "no_run_opened"
+    },
+    {
+      "type": "file_contains",
+      "path": "notes.md",
+      "pattern": "receive"
+    }
+  ],
+  "name": "neg-trivial-edit"
+}

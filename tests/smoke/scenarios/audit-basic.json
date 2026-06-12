@@ -1,0 +1,36 @@
+{
+  "playbook": "audit",
+  "tier": "standard",
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. Review request: audit src/handler.py for security and correctness. Write findings to docs/reviews/handler-findings.md ranked Blocking / Non-blocking / Question with file references. Findings only - change no code.",
+  "fixtures": {
+    "src/handler.py": "fixtures/audit-basic/handler.py"
+  },
+  "assertions": [
+    {
+      "type": "file_exists",
+      "path": "docs/reviews/handler-findings.md"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/reviews/handler-findings.md",
+      "pattern": "Blocking"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/reviews/handler-findings.md",
+      "pattern": "(?i)eval"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/handler.py",
+      "pattern": "return eval"
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "audit",
+      "status": "completed"
+    }
+  ],
+  "name": "audit-basic"
+}

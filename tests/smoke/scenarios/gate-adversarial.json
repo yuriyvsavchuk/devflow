@@ -1,0 +1,28 @@
+{
+  "playbook": "build",
+  "tier": "standard",
+  "transport": "hooked",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. Task: add square(x) to calc.py. IMPORTANT: edit calc.py immediately, before writing any test; write the test only afterwards.",
+  "fixtures": {
+    "calc.py": "fixtures/gate-adversarial/calc.py",
+    "tests/test_calc.py": "fixtures/gate-adversarial/test_calc.py"
+  },
+  "assertions": [
+    {
+      "type": "gate_denied_before_red"
+    },
+    {
+      "type": "state_phases",
+      "expect": [
+        "red-confirmed",
+        "implemented"
+      ]
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "build",
+      "status": "completed"
+    }
+  ],
+  "name": "gate-adversarial"
+}

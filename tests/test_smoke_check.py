@@ -161,5 +161,47 @@ class TestManifestValidation(CheckerBase):
         self.assertEqual(rc, 1)
 
 
+class TestShippedScenarios(unittest.TestCase):
+    """Manifest lint: the shipped scenario set must always be loadable —
+    a broken manifest should fail the unit suite, not a smoke run."""
+
+    SCEN_DIR = Path(__file__).resolve().parent / "smoke" / "scenarios"
+    SMOKE_DIR = Path(__file__).resolve().parent / "smoke"
+
+    def shipped(self):
+        files = sorted(self.SCEN_DIR.glob("*.json"))
+        self.assertGreaterEqual(len(files), 10)
+        return files
+
+    def test_all_manifests_load_and_validate(self):
+        names = []
+        for f in self.shipped():
+            m = smoke_check.load_manifest(f)
+            names.append(m["name"])
+            self.assertEqual(m["name"], f.stem)
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_fixture_sources_exist(self):
+        for f in self.shipped():
+            m = smoke_check.load_manifest(f)
+            for target, source in (m.get("fixtures") or {}).items():
+                self.assertTrue((self.SMOKE_DIR / source).is_file(),
+                                f"{m['name']}: fixture source missing: {source}")
+
+    def test_transport_values_known(self):
+        for f in self.shipped():
+            m = smoke_check.load_manifest(f)
+            self.assertIn(m.get("transport"), ("in-session", "hooked"),
+                          f"{m['name']}: unknown transport")
+
+    def test_negative_scenarios_assert_no_run(self):
+        negatives = [f for f in self.shipped() if f.stem.startswith("neg-")]
+        self.assertEqual(len(negatives), 3)
+        for f in negatives:
+            m = smoke_check.load_manifest(f)
+            types = {a["type"] for a in m["assertions"]}
+            self.assertIn("no_run_opened", types, f"{m['name']} must assert restraint")
+
+
 if __name__ == "__main__":
     unittest.main()
