@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 # Phase sequences per playbook. Forward marks may skip optional phases;
 # skipping "red-confirmed" is special-cased (see cmd_mark).
@@ -89,11 +89,25 @@ def save_state(root, state):
     _atomic_write(state_path(root), json.dumps(state, ensure_ascii=False, indent=2))
 
 
-def _append_ledger(root, record):
-    lp = ledger_path(root)
-    lp.parent.mkdir(parents=True, exist_ok=True)
-    with open(lp, "a", encoding="utf-8") as fh:
+def _append_jsonl(path, record):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _append_ledger(root, record):
+    _append_jsonl(ledger_path(root), record)
+
+
+def _journal(root, name, record):
+    """Durable evidence journals (marks-log, gate-log) consumed by the smoke
+    harness — written by the rails so assertions never depend on the model
+    reporting on itself. Fail-open: journaling may never break a command."""
+    try:
+        _append_jsonl(devflow_dir(root) / name, record)
+    except Exception:
+        pass
 
 
 # --- commands: run lifecycle ----------------------------------------------------
@@ -158,6 +172,8 @@ def cmd_mark(root, phase, evidence=None, note=None, no_tdd_reason=None):
     state["marks"].append(mark)
     state["phase"] = phase
     save_state(root, state)
+    _journal(root, "marks-log.jsonl",
+             {"run_id": state["run_id"], "phase": phase, "at": mark["at"]})
     return state
 
 
@@ -252,6 +268,8 @@ def cmd_gate(root, raw_stdin):
             return 0, None  # outside the project — not ours to gate
 
         if _match_any(rel, cfg["protected_paths"]):
+            _journal(root, "gate-log.jsonl",
+                     {"rule": "protected", "path": rel, "at": _now()})
             return 2, _PROTECTED_DENY_MSG.format(path=rel)
 
         state = load_state(root)
@@ -268,6 +286,8 @@ def cmd_gate(root, raw_stdin):
             return 0, None
 
         if _match_any(rel, cfg["production_globs"]) and not _match_any(rel, cfg["exclude_globs"]):
+            _journal(root, "gate-log.jsonl",
+                     {"rule": "red-phase", "path": rel, "at": _now()})
             return 2, _RED_DENY_MSG.format(playbook=state["playbook"])
         return 0, None
     except Exception:
@@ -739,7 +759,8 @@ HOOK_WIRING = (
 # Note: user projects commit .devflow/devflow.py as their pinned copy — only the
 # framework repo itself additionally ignores it (added by hand in its .gitignore).
 _GITIGNORE_LINES = (".devflow/state.json", ".devflow/state.json.corrupt",
-                    ".devflow/runs.jsonl")
+                    ".devflow/runs.jsonl", ".devflow/marks-log.jsonl",
+                    ".devflow/gate-log.jsonl")
 
 
 def cmd_init(root):
