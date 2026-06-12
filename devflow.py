@@ -824,7 +824,8 @@ def cmd_init(root):
             gi_text += "\n"
         gi_text += "\n".join(missing) + "\n"
         _atomic_write(gi, gi_text)
-        summary.append(".gitignore updated (state + ledger stay local)")
+        summary.append(".gitignore updated (state, ledger, and evidence "
+                       "journals stay local)")
 
     return summary or ["already initialized — nothing to do"]
 

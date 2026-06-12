@@ -65,6 +65,9 @@ def _a_file_contains(a, ws):
 
 
 def _is_ordered_subsequence(expected, actual):
+    """True when `expected` appears in `actual` in order, gaps allowed.
+    The `item in iterator` idiom advances the iterator past each match —
+    so duplicates in `expected` require duplicates in `actual`."""
     it = iter(actual)
     return all(item in it for item in expected)
 

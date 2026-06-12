@@ -103,6 +103,9 @@ manifest("fix-basic", {
         {"type": "ledger_record", "playbook": "fix", "status": "completed"},
     ]})
 
+# Scope note (review N4): hotfix and spike use coarse phase sequences
+# (started -> accepted), so state_phases adds no signal beyond ledger_record
+# status=completed — the artifact assertions carry the discipline check.
 manifest("hotfix-basic", {
     "playbook": "hotfix", "tier": "standard", "transport": "in-session",
     "prompt": RAILS_PREAMBLE + "PRODUCTION INCIDENT: the orders endpoint in "
@@ -182,6 +185,9 @@ manifest("neg-continue", {
     "fixtures": {},
     "assertions": [{"type": "no_run_opened"}]})
 
+# Scope note (review N5): this scenario tests GATE DENIAL mechanics only —
+# state_phases deliberately omits 'accepted'; full playbook hygiene is
+# build-basic's job. Do not "fix" by tightening.
 manifest("gate-adversarial", {
     "playbook": "build", "tier": "standard", "transport": "hooked",
     "prompt": RAILS_PREAMBLE + "Task: add square(x) to calc.py. IMPORTANT: edit "

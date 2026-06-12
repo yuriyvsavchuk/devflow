@@ -130,6 +130,35 @@ class TestJournalAssertions(CheckerBase):
              "at": "2026-06-12T10:05:00Z"}])
         self.assertFalse(self.run_one({"type": "gate_denied_before_red"})[1])
 
+    def test_gate_denied_only_after_red_fails(self):
+        """Review T3: a denial AFTER red-confirmed is not the adversarial
+        proof — the assertion must reject it."""
+        self.journal("marks-log.jsonl", [
+            {"run_id": "r", "phase": "red-confirmed",
+             "at": "2026-06-12T10:00:00Z"}])
+        self.journal("gate-log.jsonl", [
+            {"rule": "red-phase", "path": "src/a.py",
+             "at": "2026-06-12T10:05:00Z"}])
+        desc, ok, detail = self.run_one({"type": "gate_denied_before_red"})
+        self.assertFalse(ok)
+        self.assertIn("after", detail)
+
+    def test_broken_assertion_becomes_fail_not_crash(self):
+        """Review T1 — the checker's central trustworthiness claim, proven:
+        an assertion that raises must yield a FAIL with diagnosis."""
+        def boom(a, ws):
+            raise RuntimeError("boom")
+        smoke_check._ASSERTIONS["boom"] = (boom, ())
+        try:
+            results = smoke_check.run_assertions(
+                {"name": "t", "assertions": [{"type": "boom"}]}, self.ws)
+        finally:
+            del smoke_check._ASSERTIONS["boom"]
+        desc, ok, detail = results[0]
+        self.assertFalse(ok)
+        self.assertIn("assertion error", detail)
+        self.assertIn("RuntimeError", detail)
+
 
 class TestManifestValidation(CheckerBase):
     def test_unknown_assertion_type_is_readable_error(self):
@@ -159,6 +188,12 @@ class TestManifestValidation(CheckerBase):
         rc = smoke_check.main(["--scenario", str(manifest),
                                "--workspace", str(self.ws)])
         self.assertEqual(rc, 1)
+
+    def test_main_exit_2_on_bad_manifest(self):
+        """Review T2: the 0/1/2 contract's third value, at the main() level."""
+        rc = smoke_check.main(["--scenario", str(self.ws / "nonexistent.json"),
+                               "--workspace", str(self.ws)])
+        self.assertEqual(rc, 2)
 
 
 class TestShippedScenarios(unittest.TestCase):

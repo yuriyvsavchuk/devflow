@@ -31,8 +31,10 @@ note (a paragraph each):
 
 ## Week 2 — add the Rails (Level 2)
 
-`cd your-project && python /path/to/devflow/devflow.py init` — then work
-normally again. The rails add: the session auto-brief, the TDD gate during
+`cd your-project && python /path/to/devflow/devflow.py init`, then
+`python .devflow/devflow.py doctor` (all checks must PASS — doctor exists to
+catch hook-wiring problems that would otherwise silently un-gate your week 2).
+Then work normally again. The rails add: the session auto-brief, the TDD gate during
 fix/build runs, protected paths (add 1–3 of your genuinely human-only files
 to `.devflow/config.json`), and the run ledger.
 
