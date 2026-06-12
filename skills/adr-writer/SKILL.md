@@ -58,6 +58,10 @@ Where `short-title` is a kebab-case slug derived from the decision title (e.g., 
 **Date:** YYYY-MM-DD
 **Status:** Accepted
 <!-- Valid values: Proposed | Accepted | Deprecated | Superseded by ADR-NNNN -->
+**Relates-to:** src/auth/*, src/api/*
+<!-- Optional — comma-separated path globs this decision constrains. Enables the
+     rails' `verify` staleness check: if these paths churn after the ADR's last
+     commit, verify nudges "verify the decision still holds". Omit if not applicable. -->
 **Context source:** [brainstorming | technology-selector | researcher | poc-retrospective | architecture discussion]
 
 ## Context
