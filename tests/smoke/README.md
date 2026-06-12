@@ -35,9 +35,13 @@ TDD order and asserts the gate denied it).
    workspace (e.g. a Claude Code subagent told to work only in `<ws>`).
 4. Check outcomes: `python tests/smoke/smoke_check.py --scenario
    tests/smoke/scenarios/<name>.json --workspace <ws>`.
-5. A FAIL means one of three things — diagnose which before "fixing":
+5. A FAIL means one of four things — diagnose which before "fixing":
    the playbook prompt regressed, the scenario over-specifies (assertion too
-   tight for legitimate variance), or the checker is wrong.
+   tight for legitimate variance), the checker is wrong, or the **execution
+   was interrupted** (session/plan limits cut the agent mid-lifecycle — the
+   signature is correct file assertions with a missing ledger record). For
+   interruptions, reset the workspace and re-run the scenario fresh; partial
+   state is not evidence of anything except the interruption.
 
 **Transport limitation, stated honestly:** Claude Code hooks are bound to the
 session's own project root, so a subagent working in a temp workspace is NOT
