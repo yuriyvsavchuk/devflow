@@ -89,6 +89,12 @@ When a new development task begins, invoke the devflow-dispatch skill to classif
 
 Devflow makes one developer (or a small team sharing a repo) more effective. The **Team Extension** (`devflow-team`) adds coordination for larger teams — structural ledger, decision broadcast, spec-driven QA, cadence/ceremony support. It is private and access-controlled; see [`team/README.md`](team/README.md) and [`team/GETTING-ACCESS.md`](team/GETTING-ACCESS.md).
 
+## Releases
+
+Version history is in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog + SemVer);
+tagged releases with notes are on the [Releases page](https://github.com/yuriyvsavchuk/devflow/releases).
+Upgrading from v1 → v2: [MIGRATION-v2.md](MIGRATION-v2.md).
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE). The private `devflow-team` extension is licensed separately.
