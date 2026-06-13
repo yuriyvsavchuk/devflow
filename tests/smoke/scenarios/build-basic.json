@@ -1,0 +1,36 @@
+{
+  "playbook": "build",
+  "tier": "standard",
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. Task: add a multiply(a, b) function to calc.py, TDD-first - write the failing test in tests/test_calc.py BEFORE touching calc.py, mark red-confirmed with the test as evidence, then implement until green (run: python -m unittest discover tests).",
+  "fixtures": {
+    "calc.py": "fixtures/build-basic/calc.py",
+    "tests/test_calc.py": "fixtures/build-basic/test_calc.py"
+  },
+  "assertions": [
+    {
+      "type": "state_phases",
+      "expect": [
+        "red-confirmed",
+        "implemented",
+        "accepted"
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "tests/test_calc.py",
+      "pattern": "multiply"
+    },
+    {
+      "type": "file_contains",
+      "path": "calc.py",
+      "pattern": "def multiply"
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "build",
+      "status": "completed"
+    }
+  ],
+  "name": "build-basic"
+}

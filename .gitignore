@@ -5,3 +5,5 @@ __pycache__/
 .devflow/state.json.corrupt
 .devflow/runs.jsonl
 .devflow/devflow.py
+.devflow/marks-log.jsonl
+.devflow/gate-log.jsonl

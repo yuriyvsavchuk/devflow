@@ -152,6 +152,54 @@ class TestFinish(StateCoreBase):
         self.assertEqual(len(self.ledger_lines()), 2)
 
 
+class TestEvidenceJournals(StateCoreBase):
+    """Phase 4: marks and gate denials must leave durable evidence that
+    survives `finish` — the smoke harness asserts on these journals."""
+
+    def test_marks_journal_survives_finish(self):
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        devflow.cmd_mark(self.root, "repro-confirmed")
+        devflow.cmd_mark(self.root, "red-confirmed")
+        devflow.cmd_mark(self.root, "fix-applied")
+        devflow.cmd_mark(self.root, "review-passed")
+        devflow.cmd_mark(self.root, "accepted")
+        devflow.cmd_finish(self.root)
+        jp = self.root / ".devflow" / "marks-log.jsonl"
+        self.assertTrue(jp.exists())
+        entries = [json.loads(l) for l in jp.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([e["phase"] for e in entries],
+                         ["repro-confirmed", "red-confirmed", "fix-applied",
+                          "review-passed", "accepted"])
+        self.assertTrue(all("run_id" in e and "at" in e for e in entries))
+
+    def test_gate_denial_logged_with_rule(self):
+        cfg = dict(devflow.DEFAULT_CONFIG)
+        cfg["protected_paths"] = ["secret/*"]
+        (self.root / ".devflow" / "config.json").write_text(
+            json.dumps(cfg), encoding="utf-8")
+        devflow.cmd_start(self.root, "fix", tier="standard", task="t")
+        payload = lambda p: json.dumps({"tool_name": "Write",
+                                        "tool_input": {"file_path": str(p)},
+                                        "cwd": str(self.root)})
+        code, _ = devflow.cmd_gate(self.root, payload(self.root / "src" / "a.py"))
+        self.assertEqual(code, 2)
+        code, _ = devflow.cmd_gate(self.root, payload(self.root / "secret" / "k.pem"))
+        self.assertEqual(code, 2)
+        gp = self.root / ".devflow" / "gate-log.jsonl"
+        entries = [json.loads(l) for l in gp.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([e["rule"] for e in entries], ["red-phase", "protected"])
+        self.assertIn("a.py", entries[0]["path"])
+
+    def test_gate_allow_writes_no_log(self):
+        devflow.cmd_start(self.root, "fix", tier="quick", task="t")
+        payload = json.dumps({"tool_name": "Write",
+                              "tool_input": {"file_path": str(self.root / "x.py")},
+                              "cwd": str(self.root)})
+        code, _ = devflow.cmd_gate(self.root, payload)
+        self.assertEqual(code, 0)
+        self.assertFalse((self.root / ".devflow" / "gate-log.jsonl").exists())
+
+
 class TestStateRobustness(StateCoreBase):
     def test_save_load_roundtrip_unicode(self):
         devflow.cmd_start(self.root, "shape", tier="standard", task="зробити пошук — résumé")

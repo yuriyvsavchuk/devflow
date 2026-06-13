@@ -1,0 +1,24 @@
+{
+  "playbook": "spike",
+  "tier": "standard",
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. Feasibility question: is Python's built-in sqlite3 with FTS5 viable for full-text search over ~10k short product names? Run a small throwaway experiment in this workspace and close with a retrospective at docs/spikes/fts5-retrospective.md containing an explicit Proceed, Pivot, or Abandon decision and the evidence.",
+  "fixtures": {},
+  "assertions": [
+    {
+      "type": "file_exists",
+      "path": "docs/spikes/fts5-retrospective.md"
+    },
+    {
+      "type": "file_contains",
+      "path": "docs/spikes/fts5-retrospective.md",
+      "pattern": "(Proceed|Pivot|Abandon)"
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "spike",
+      "status": "completed"
+    }
+  ],
+  "name": "spike-basic"
+}
