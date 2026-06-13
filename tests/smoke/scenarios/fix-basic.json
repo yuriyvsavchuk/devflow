@@ -1,0 +1,36 @@
+{
+  "playbook": "fix",
+  "tier": "standard",
+  "transport": "in-session",
+  "prompt": "You are working ONLY inside the workspace directory given to you - never outside it. Devflow rails are installed there: follow the devflow discipline - open the run with `python .devflow/devflow.py start <playbook> --tier standard --task \"...\"`, mark phases as you pass them (see the playbook), and `finish` when done. Bug report: calc.divide(1, 0) crashes with ZeroDivisionError; expected behavior: raise ValueError('denominator must be non-zero'). Reproduce it first, write the failing regression test in tests/test_calc.py, mark red-confirmed with it as evidence, then apply the minimal fix until the suite is green.",
+  "fixtures": {
+    "calc.py": "fixtures/fix-basic/calc.py",
+    "tests/test_calc.py": "fixtures/fix-basic/test_calc.py"
+  },
+  "assertions": [
+    {
+      "type": "state_phases",
+      "expect": [
+        "red-confirmed",
+        "fix-applied",
+        "accepted"
+      ]
+    },
+    {
+      "type": "file_contains",
+      "path": "tests/test_calc.py",
+      "pattern": "ValueError|non-zero"
+    },
+    {
+      "type": "file_contains",
+      "path": "calc.py",
+      "pattern": "ValueError"
+    },
+    {
+      "type": "ledger_record",
+      "playbook": "fix",
+      "status": "completed"
+    }
+  ],
+  "name": "fix-basic"
+}
