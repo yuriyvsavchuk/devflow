@@ -38,15 +38,7 @@ The user's one-word override always wins: `quick: fix the date format` / `full: 
 
 ## Rails — what's enforced vs guided
 
-Install once per project — run from **your project's root** (the directory you open Claude Code in), pointing at the framework's copy:
-
-```sh
-cd /path/to/your-project
-python /path/to/devflow/devflow.py init   # scaffolds .devflow/, wires hooks merge-safe into .claude/settings.json
-python .devflow/devflow.py doctor         # health check (your project now has its own pinned copy)
-```
-
-Prerequisites: Python 3 on PATH; on Windows, Git Bash (ships with Git for Windows — hooks run shell commands through it).
+The optional rails are a single-file CLI wired into Claude Code hooks. Install them per project with `devflow.py init` — see [docs/ADOPTION.md](docs/ADOPTION.md) for the exact commands and prerequisites. What they do:
 
 | Mechanism | Kind | What it does |
 |---|---|---|
@@ -82,6 +74,8 @@ Then add the activation line to your `~/.claude/CLAUDE.md` (or a project's `CLAU
 ```markdown
 When a new development task begins, invoke the devflow-dispatch skill to classify it. Do not re-invoke for mid-task messages or follow-up confirmations.
 ```
+
+That's **Level 1 (Core)**. The full picture — all three levels, the rails (`init` / `doctor`), prerequisites, reversibility, and a ten-minute quickstart — is in **[docs/ADOPTION.md](docs/ADOPTION.md)**.
 
 **Migrating from v1:** the v1 `using-devflow` router is now a redirect with a full pipeline→playbook mapping — see [skills/using-devflow/SKILL.md](skills/using-devflow/SKILL.md). All v1 artifact directories and formats are unchanged.
 
