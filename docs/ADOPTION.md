@@ -77,7 +77,7 @@ Two semantics worth knowing: **staleness checks are all-time** comparisons of gi
 
 `verify` adds two **detect-and-prompt** checks (advisory; they never modify a file):
 
-- **spec-coverage** — an agreed spec's `AC-n` with no referencing test. A test *covers* a spec's `AC-n` when a file under a test path mentions both the spec **slug** (its filename stem) and the token `AC-n` — e.g. a test named `test_<slug>_ac3` or a `# covers: <slug> AC-3` comment. This is a lightweight ID-reference convention, not a requirements database. The check stays silent until the convention is in use (≥1 test references a spec AC), so it never floods a project that hasn't adopted it.
+- **spec-coverage** — an agreed spec's `AC-n` with no referencing test. A test *covers* a spec's `AC-n` when a **test file** (a `test`/`tests`/`spec` path segment, or a `test_*` / `*_test` / `*.test.*` / `*.spec.*` filename) mentions both the spec **slug** (its filename stem, matched on word boundaries) and the token `AC-n` — e.g. a test named `test_<slug>_ac3` or a `# covers: <slug> AC-3` comment. This is a lightweight ID-reference convention, not a requirements database. The check stays silent until the convention is in use (≥1 test references a spec AC), so it never floods a project that hasn't adopted it.
 - **spec-drift** — an agreed spec whose covering tests have a newer last-commit date than the spec itself (the behavior evolved; the spec lagged). Bidirectional with spec-coverage; both reuse the git-date staleness machinery.
 
 Neither check auto-syncs spec and code — they surface a gap for you to reconcile, by design.

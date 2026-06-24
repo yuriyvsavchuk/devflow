@@ -1122,6 +1122,36 @@ class TestVerifySpecCoverage(VerifyBase):
         findings, notes = self.run_verify()  # must not raise
         self.assertIsInstance(findings, list)
 
+    def test_partial_coverage_gate(self):
+        # Review MT-1: one fully-covered spec opens the gate; another's gap shows.
+        self.write_spec("alpha.md", acs=(1,))
+        self.write_spec("beta.md", acs=(1, 2))
+        self.write_test_file("tests/test_alpha.py", "alpha AC-1\n")
+        self.write_test_file("tests/test_beta.py", "beta AC-1\n")
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("beta", hits[0])
+        self.assertIn("AC-2", hits[0])
+
+    def test_slug_substring_not_credited(self):
+        # Review NB-2: 'auth' must not be credited by 'authentication'.
+        self.write_spec("auth.md", acs=(1,))
+        self.write_spec("billing.md", acs=(1,))
+        self.write_test_file("tests/test_billing.py", "billing AC-1\n")   # opens gate
+        self.write_test_file("tests/test_authn.py", "authentication AC-1\n")
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("auth", hits[0])
+
+    def test_non_test_path_not_treated_as_test(self):
+        # Review NB-1: src/contest.py is not a test file.
+        self.write_spec("checkout.md", acs=(1, 2))
+        self.write_test_file("tests/test_checkout.py", "checkout AC-1\n")  # opens gate
+        self.write_test_file("src/contest.py", "checkout AC-2\n")          # not a test
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-2", hits[0])
+
 
 class TestVerifySpecDrift(GitFixtureBase):
     """SDD Tier-1: a spec older than its covering tests may be stale."""
@@ -1177,6 +1207,19 @@ class TestVerifySpecDrift(GitFixtureBase):
         _, notes = self.run_verify()
         self.assertTrue(any("git" in n.lower()
                             for n in self.notes_for("spec-drift", notes)))
+
+    def test_slug_only_reference_is_not_covering(self):
+        # Review NB-3: a file mentioning the slug but no AC-id is not a covering
+        # test, so it must not trigger drift (consistent with coverage).
+        self.init_repo()
+        self.write_spec_file("checkout", (1,))
+        self.commit_file("docs/specs/checkout.md", self.now() - timedelta(days=5))
+        p = self.root / "tests" / "uses_checkout.py"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("import checkout\n", encoding="utf-8")
+        self.commit_file("tests/uses_checkout.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-drift", findings))
 
 
 class TestVerifyStrictExit(VerifyBase):

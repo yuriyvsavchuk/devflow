@@ -500,10 +500,10 @@ def cmd_stats(root):
 # Advisory by default; --strict exits 1 on findings (D26). Every check returns
 # either ("skip", reason) or a list of finding strings, and may never raise out.
 
-# Tolerates an optional notation tag between the id and the colon
-# (`- AC-1 ` + "`ears`" + `: …`), introduced by SDD Tier-1; bare `- AC-1: …`
-# still matches (backward compatible).
-_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)(?:\s+`?[A-Za-z]+`?)?\s*:")
+# Tolerates an optional notation tag (`gwt`/`ears`/`prose`, backticks optional)
+# between the id and the colon — `- AC-1 `ears`: …`. Bare `- AC-1: …` still
+# matches (backward compatible); an arbitrary word is NOT treated as a tag.
+_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)(?:\s+`?(?:gwt|ears|prose)`?)?\s*:")
 _AC_REF_RE = re.compile(r"\b(AC-\d+)\b")
 _SPEC_REF_RE = re.compile(r"docs/specs/([\w.\-]+\.md)")
 _STATUS_RE = re.compile(r"(?m)^status:\s*(\w+)")
@@ -718,6 +718,26 @@ def _check_adr_stale(root, cfg, window_days):
     return findings, notes
 
 
+def _is_test_path(relpath):
+    """True for conventional test files — a `test`/`tests`/`spec` path segment,
+    a `test_*` / `*_test` filename, or a `.test.`/`.spec.` name. Avoids the
+    substring trap: contest.py, latest/, attestation.md are NOT tests."""
+    # NB: a `specs/` directory (e.g. docs/specs) is NOT tests — only `.spec.`
+    # filenames (jest) and `_spec` stems (rspec) count.
+    parts = {part.lower() for part in relpath.parts}
+    name, stem = relpath.name.lower(), relpath.stem.lower()
+    return (
+        bool(parts & {"test", "tests", "__tests__"})
+        or stem.startswith("test_") or stem.endswith(("_test", "_tests", "_spec"))
+        or ".test." in name or ".spec." in name
+    )
+
+
+def _mentions(slug, text):
+    """Word-boundary slug match — 'auth' must not match inside 'authentication'."""
+    return re.search(r"(?<![\w-])" + re.escape(slug) + r"(?![\w-])", text) is not None
+
+
 def _scan_specs_and_tests(root):
     """Shared linkage for the SDD checks (Tier-1). Returns:
       specs: {slug: set(ac_ids)} for agreed/accepted specs that define criteria
@@ -742,16 +762,17 @@ def _scan_specs_and_tests(root):
         for p in Path(root).rglob("*"):
             if not p.is_file():
                 continue
-            rel = p.relative_to(root).as_posix()
+            relp = p.relative_to(root)
+            rel = relp.as_posix()
             if rel.startswith((".devflow/", ".git/")) or "/.git/" in rel:
                 continue
-            if "test" not in rel.lower():
+            if not _is_test_path(relp):
                 continue
             try:
                 t = p.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            slugs = {s for s in specs if s in t}
+            slugs = {s for s in specs if _mentions(s, t)}
             if slugs:
                 refs.append((rel, slugs, set(re.findall(r"AC-\d+", t))))
     return specs, refs
@@ -793,9 +814,10 @@ def _check_spec_drift(root, cfg, window_days):
         return [], ["no agreed specs with acceptance criteria"]
     findings = []
     for slug in sorted(specs):
-        covering = [rel for rel, slugs, _a in refs if slug in slugs]
+        covering = [rel for rel, slugs, acs in refs if slug in slugs and acs]
         if not covering:
-            continue  # the coverage check owns the no-test gap
+            continue  # the coverage check owns the no-test gap; a slug-only
+            #           mention (no AC id) is not a covering test (review NB-3)
         spec_ep = _last_commit_epoch(root, f"docs/specs/{slug}.md")
         if spec_ep is None:
             continue
