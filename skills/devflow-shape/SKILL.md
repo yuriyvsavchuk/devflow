@@ -42,10 +42,12 @@ date: YYYY-MM-DD
 ## Context
 
 ## Acceptance criteria
-- AC-1: <independently testable statement>
-- AC-2: …
+- AC-1 `gwt`: Given <precondition>, When <action>, Then <observable outcome>.
+- AC-2 `ears`: When <trigger>, the system shall <response>.
+- AC-3 `prose`: <independently testable statement>
 
-## Out of scope
+## Non-Goals
+- `ears`: If <unwanted condition>, then the system shall <safe response>. (What it does NOT do.)
 
 ## Assumptions
 
@@ -58,6 +60,12 @@ date: YYYY-MM-DD
 Rules:
 
 - Acceptance criteria are numbered `AC-n` and each is **independently testable** — downstream tests, reviews, and acceptance checks reference these IDs. A criterion that cannot fail a test is not a criterion. (Format contract: docs/ADOPTION.md → front-matter conventions; the rails' `verify` checks it.)
+- **Notation (SDD Tier-1):** each criterion may carry a notation tag — pick the form that fits the requirement type, keeping the `AC-n` ID:
+  - `` `gwt` `` (Given/When/Then) for **behavioral flows** — carries concrete example data, ideal for test generation.
+  - `` `ears` `` (EARS) for **constraints, invariants, and unwanted-behavior** — terse; the `If <condition>, then …` pattern is the recommended form for **Non-Goals** ("what it does NOT do").
+  - `` `prose` `` (or no tag) — the always-valid fallback, especially at `quick` tier.
+  Mixing notations within one spec is expected; choose per criterion, not per spec.
+- **Non-Goals are first-class** — articulate what the system does NOT do as clearly as what it does.
 - **XL size or Low confidence → split** into multiple specs before any planning; each spec routes through dispatch separately.
 
 ### 4. Decision checkpoint

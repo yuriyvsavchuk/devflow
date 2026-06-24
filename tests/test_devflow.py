@@ -1068,6 +1068,170 @@ class TestCiTemplates(unittest.TestCase):
         self.assertNotIn("removed", hits[0])
 
 
+class TestVerifySpecCoverage(VerifyBase):
+    """SDD Tier-1: every agreed spec's AC-n should have a referencing test."""
+
+    def write_test_file(self, relpath, text):
+        p = self.root / relpath
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+
+    def test_uncovered_ac_flagged(self):
+        self.write_spec("checkout.md", acs=(1, 2, 3))
+        self.write_test_file("tests/test_checkout.py",
+                             "# covers checkout AC-1 AC-3\n"
+                             "def test_checkout_ac1(): pass\n")
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-coverage", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-2", hits[0])
+        self.assertIn("checkout", hits[0])
+        self.assertNotIn("AC-1", hits[0])
+
+    def test_fully_covered_clean(self):
+        self.write_spec("checkout.md", acs=(1, 2))
+        self.write_test_file("tests/test_checkout.py", "checkout AC-1 AC-2\n")
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-coverage", findings))
+
+    def test_notation_tag_is_parsed(self):
+        d = self.root / "docs" / "specs"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "tagged.md").write_text(
+            "---\ntype: spec\nstatus: agreed\n---\n\n## Acceptance criteria\n"
+            "- AC-1 `ears`: the system shall foo\n"
+            "- AC-2 `gwt`: Given x When y Then z\n", encoding="utf-8")
+        self.write_test_file("tests/test_tagged.py", "tagged AC-1\n")
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-coverage", findings)
+        self.assertEqual(len(hits), 1)          # both tags parsed as AC ids;
+        self.assertIn("AC-2", hits[0])          # the gwt-tagged AC is uncovered
+        self.assertNotIn("AC-1", hits[0])       # the ears-tagged AC is covered
+
+    def test_no_specs_dir_skips(self):
+        findings, notes = self.run_verify()
+        self.assertTrue(self.notes_for("spec-coverage", notes))
+
+    def test_draft_spec_not_required_to_be_covered(self):
+        self.write_spec("wip.md", status="draft", acs=(1, 2))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-coverage", findings))
+
+    def test_zero_ac_spec_does_not_crash(self):
+        self.write_spec("empty.md", status="agreed", acs=())
+        findings, notes = self.run_verify()  # must not raise
+        self.assertIsInstance(findings, list)
+
+    def test_partial_coverage_gate(self):
+        # Review MT-1: one fully-covered spec opens the gate; another's gap shows.
+        self.write_spec("alpha.md", acs=(1,))
+        self.write_spec("beta.md", acs=(1, 2))
+        self.write_test_file("tests/test_alpha.py", "alpha AC-1\n")
+        self.write_test_file("tests/test_beta.py", "beta AC-1\n")
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("beta", hits[0])
+        self.assertIn("AC-2", hits[0])
+
+    def test_slug_substring_not_credited(self):
+        # Review NB-2: 'auth' must not be credited by 'authentication'.
+        self.write_spec("auth.md", acs=(1,))
+        self.write_spec("billing.md", acs=(1,))
+        self.write_test_file("tests/test_billing.py", "billing AC-1\n")   # opens gate
+        self.write_test_file("tests/test_authn.py", "authentication AC-1\n")
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("auth", hits[0])
+
+    def test_non_test_path_not_treated_as_test(self):
+        # Review NB-1: src/contest.py is not a test file.
+        self.write_spec("checkout.md", acs=(1, 2))
+        self.write_test_file("tests/test_checkout.py", "checkout AC-1\n")  # opens gate
+        self.write_test_file("src/contest.py", "checkout AC-2\n")          # not a test
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-2", hits[0])
+
+    def test_specs_dir_file_not_treated_as_test(self):
+        # Confirmation review: a docs/specs/*_spec.md must not self-cover via
+        # the _spec stem — docs/specs/ is never scanned as a test reference.
+        self.write_spec("checkout.md", acs=(1, 2))
+        self.write_test_file("tests/test_checkout.py", "checkout AC-1\n")  # opens gate
+        self.write_test_file("docs/specs/extra_spec.md", "see checkout AC-2\n")
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-2", hits[0])
+
+
+class TestVerifySpecDrift(GitFixtureBase):
+    """SDD Tier-1: a spec older than its covering tests may be stale."""
+
+    def write_spec_file(self, slug, acs=(1, 2)):
+        d = self.root / "docs" / "specs"
+        d.mkdir(parents=True, exist_ok=True)
+        body = ("---\ntype: spec\nstatus: agreed\n---\n\n## Acceptance criteria\n"
+                + "".join(f"- AC-{n} `ears`: the system shall do {n}\n" for n in acs))
+        (d / f"{slug}.md").write_text(body, encoding="utf-8")
+
+    def write_test(self, slug, acs=(1, 2)):
+        p = self.root / "tests" / f"test_{slug}.py"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"# covers {slug} " + " ".join(f"AC-{n}" for n in acs) + "\n",
+                     encoding="utf-8")
+
+    def commit_file(self, relpath, when):
+        stamp = f"@{int(when.timestamp())} +0000"
+        self.git("add", relpath)
+        self.git("commit", "-q", "-m", f"c {relpath}",
+                 env_extra={"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp})
+
+    def test_spec_older_than_covering_test_is_drift(self):
+        self.init_repo()
+        self.write_spec_file("checkout", (1, 2))
+        self.commit_file("docs/specs/checkout.md", self.now() - timedelta(days=5))
+        self.write_test("checkout", (1, 2))
+        self.commit_file("tests/test_checkout.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        hits = self.findings_for("spec-drift", findings)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("checkout", hits[0])
+
+    def test_spec_newer_than_test_clean(self):
+        self.init_repo()
+        self.write_test("checkout", (1, 2))
+        self.commit_file("tests/test_checkout.py", self.now() - timedelta(days=5))
+        self.write_spec_file("checkout", (1, 2))
+        self.commit_file("docs/specs/checkout.md", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-drift", findings))
+
+    def test_no_covering_test_is_not_drift(self):
+        self.init_repo()
+        self.write_spec_file("lonely", (1,))
+        self.commit_file("docs/specs/lonely.md", self.now() - timedelta(days=5))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-drift", findings))
+
+    def test_non_git_skips(self):
+        self.write_spec_file("x", (1,))
+        _, notes = self.run_verify()
+        self.assertTrue(any("git" in n.lower()
+                            for n in self.notes_for("spec-drift", notes)))
+
+    def test_slug_only_reference_is_not_covering(self):
+        # Review NB-3: a file mentioning the slug but no AC-id is not a covering
+        # test, so it must not trigger drift (consistent with coverage).
+        self.init_repo()
+        self.write_spec_file("checkout", (1,))
+        self.commit_file("docs/specs/checkout.md", self.now() - timedelta(days=5))
+        p = self.root / "tests" / "uses_checkout.py"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("import checkout\n", encoding="utf-8")
+        self.commit_file("tests/uses_checkout.py", self.now() - timedelta(days=1))
+        findings, _ = self.run_verify()
+        self.assertFalse(self.findings_for("spec-drift", findings))
+
+
 class TestVerifyStrictExit(VerifyBase):
     def test_strict_exit_codes_via_main(self):
         self.write_spec("bad.md", status="agreed", acs=())
