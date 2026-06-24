@@ -37,7 +37,7 @@ python .devflow/devflow.py doctor
 | TDD gate | In `fix`/`build` runs at standard+ tier, production edits are mechanically denied until `mark red-confirmed` |
 | Protected paths | Files you list in `.devflow/config.json` are denied to the agent unconditionally |
 | Run ledger | `stats` (all-time), `digest --days N` (recent window) — your process becomes measurable |
-| `verify` | Structural checks: spec/AC linkage, out-of-band commits, contract and ADR staleness — advisory by default |
+| `verify` | Structural checks: spec/AC linkage, spec-coverage & spec-drift, out-of-band commits, contract and ADR staleness — advisory by default |
 
 **Step back:** set `"enabled": false` in `.devflow/config.json`, or delete `.devflow/`. The rails are fail-open at every layer — they can be wrong, they cannot break your session. Your project keeps its own version-pinned copy; upgrade by re-running `init` (doctor flags version skew).
 
@@ -65,10 +65,19 @@ These formats are the contract `verify` checks against. Deviations are treated a
 
 | Artifact | Location | Required shape |
 |---|---|---|
-| Spec | `docs/specs/<slug>.md` | YAML front-matter `type: spec`, `status: draft\|agreed\|accepted`, `date:`; criteria as `- AC-1: <independently testable>` bullets. Plans reference the spec path(s) and their `AC-n` IDs — a plan may cite several specs; ACs are checked against the union |
+| Spec | `docs/specs/<slug>.md` | YAML front-matter `type: spec`, `status: draft\|agreed\|accepted`, `date:`; criteria as `- AC-1 \`gwt\|ears\|prose\`: <statement>` bullets (the notation tag is optional; bare `- AC-1: …` still valid). Plans reference the spec path(s) and their `AC-n` IDs — a plan may cite several specs; ACs are checked against the union |
 | Hotfix debt | `docs/sessions/hotfix-debt-<slug>.md` | Front-matter `type: hotfix-debt`, `status: open\|closed`, `date:`. The brief nags while `open`; only a follow-up fix run closes it |
 | ADR | `docs/decisions/NNNN-<slug>.md` | Header lines `**Status:** Accepted` and optional `**Relates-to:** <glob>, <glob>` — globs of paths the decision constrains; enables the staleness nudge |
 | Indexes | `docs/decisions/index.md`, `docs/interfaces/index.md` | One `- <entry>` bullet per item, newest appended last; consumed by brief and digest |
 | Contract map | `.devflow/config.json` → `contract_map` | `{"docs/interfaces/<file>": ["src/api/*", …]}` — enables contract-staleness checking |
 
 Two semantics worth knowing: **staleness checks are all-time** comparisons of git commit dates (`--window-days` scopes only the out-of-band check), and the `contract_map` / `Relates-to` patterns are passed to git as **pathspecs, where `*` matches across directory separators by default** — `src/api/*` covers the whole subtree, verified empirically. Header forms accepted for ADRs: `**Relates-to:**`, `Relates-to:`, or `relates-to:`.
+
+### Spec ↔ test linkage (SDD Tier-1)
+
+`verify` adds two **detect-and-prompt** checks (advisory; they never modify a file):
+
+- **spec-coverage** — an agreed spec's `AC-n` with no referencing test. A test *covers* a spec's `AC-n` when a **test file** (a `test`/`tests`/`spec` path segment, or a `test_*` / `*_test` / `*.test.*` / `*.spec.*` filename) mentions both the spec **slug** (its filename stem, matched on word boundaries) and the token `AC-n` — e.g. a test named `test_<slug>_ac3` or a `# covers: <slug> AC-3` comment. This is a lightweight ID-reference convention, not a requirements database. The check stays silent until the convention is in use (≥1 test references a spec AC), so it never floods a project that hasn't adopted it.
+- **spec-drift** — an agreed spec whose covering tests have a newer last-commit date than the spec itself (the behavior evolved; the spec lagged). Bidirectional with spec-coverage; both reuse the git-date staleness machinery.
+
+Neither check auto-syncs spec and code — they surface a gap for you to reconcile, by design.

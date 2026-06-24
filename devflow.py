@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # Phase sequences per playbook. Forward marks may skip optional phases;
 # skipping "red-confirmed" is special-cased (see cmd_mark).
@@ -500,7 +500,10 @@ def cmd_stats(root):
 # Advisory by default; --strict exits 1 on findings (D26). Every check returns
 # either ("skip", reason) or a list of finding strings, and may never raise out.
 
-_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)\s*:")
+# Tolerates an optional notation tag (`gwt`/`ears`/`prose`, backticks optional)
+# between the id and the colon — `- AC-1 `ears`: …`. Bare `- AC-1: …` still
+# matches (backward compatible); an arbitrary word is NOT treated as a tag.
+_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)(?:\s+`?(?:gwt|ears|prose)`?)?\s*:")
 _AC_REF_RE = re.compile(r"\b(AC-\d+)\b")
 _SPEC_REF_RE = re.compile(r"docs/specs/([\w.\-]+\.md)")
 _STATUS_RE = re.compile(r"(?m)^status:\s*(\w+)")
@@ -715,8 +718,125 @@ def _check_adr_stale(root, cfg, window_days):
     return findings, notes
 
 
+def _is_test_path(relpath):
+    """True for conventional test files — a `test`/`tests`/`__tests__` path
+    segment, a `test_*` / `*_test` / `*_spec` stem, or a `.test.`/`.spec.` name.
+    Avoids the substring trap: contest.py, latest/, attestation.md are NOT
+    tests. (Files under docs/specs/ are excluded by the caller regardless.)"""
+    # NB: a `specs/` directory (e.g. docs/specs) is NOT tests — only `.spec.`
+    # filenames (jest) and `_spec` stems (rspec) count.
+    parts = {part.lower() for part in relpath.parts}
+    name, stem = relpath.name.lower(), relpath.stem.lower()
+    return (
+        bool(parts & {"test", "tests", "__tests__"})
+        or stem.startswith("test_") or stem.endswith(("_test", "_tests", "_spec"))
+        or ".test." in name or ".spec." in name
+    )
+
+
+def _mentions(slug, text):
+    """Word-boundary slug match — 'auth' must not match inside 'authentication'."""
+    return re.search(r"(?<![\w-])" + re.escape(slug) + r"(?![\w-])", text) is not None
+
+
+def _scan_specs_and_tests(root):
+    """Shared linkage for the SDD checks (Tier-1). Returns:
+      specs: {slug: set(ac_ids)} for agreed/accepted specs that define criteria
+      refs:  [(relpath, {slugs}, {ac_ids})] for test files referencing a slug
+    A test 'covers' spec S's AC-n when a test file mentions both S's slug and
+    the token AC-n (lightweight ID-reference convention, not an RM database)."""
+    specs = {}
+    specs_dir = Path(root) / "docs" / "specs"
+    if specs_dir.is_dir():
+        for spec in sorted(specs_dir.glob("*.md")):
+            if spec.name == "index.md":
+                continue
+            text = _read_text_safe(spec)
+            m = _STATUS_RE.search(text[:400])
+            if not (m and m.group(1).lower() in ("agreed", "accepted")):
+                continue
+            acs = set(_AC_DEF_RE.findall(text))
+            if acs:
+                specs[spec.stem] = acs
+    refs = []
+    if specs:
+        for p in Path(root).rglob("*"):
+            if not p.is_file():
+                continue
+            relp = p.relative_to(root)
+            rel = relp.as_posix()
+            # docs/specs/ is the spec home, never a test source — exclude it so
+            # a spec named *_spec.md cannot self-cover via the _spec stem.
+            if (rel.startswith((".devflow/", ".git/", "docs/specs/"))
+                    or "/.git/" in rel):
+                continue
+            if not _is_test_path(relp):
+                continue
+            try:
+                t = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            slugs = {s for s in specs if _mentions(s, t)}
+            if slugs:
+                refs.append((rel, slugs, set(re.findall(r"AC-\d+", t))))
+    return specs, refs
+
+
+def _check_spec_coverage(root, cfg, window_days):
+    """An agreed spec's AC-n with no referencing test (spec ahead of tests)."""
+    if not (Path(root) / "docs" / "specs").is_dir():
+        return [], ["no docs/specs/ directory"]
+    specs, refs = _scan_specs_and_tests(root)
+    if not specs:
+        return [], ["no agreed specs with acceptance criteria"]
+    covered = set()
+    for _rel, slugs, acs in refs:
+        for s in slugs:
+            for a in acs:
+                covered.add((s, a))
+    if not covered:
+        # No test references any spec AC — the project hasn't adopted the
+        # convention. Stay quiet rather than flag every AC (false-positive trap).
+        return [], ["coverage convention not in use (no test references a spec AC)"]
+    findings = []
+    for slug in sorted(specs):
+        uncov = sorted(a for a in specs[slug] if (slug, a) not in covered)
+        if uncov:
+            findings.append(f"{slug}: no test references {', '.join(uncov)} "
+                            f"(spec-coverage gap)")
+    return findings, []
+
+
+def _check_spec_drift(root, cfg, window_days):
+    """A spec older than its covering tests (tests evolved, spec lagging)."""
+    if not (Path(root) / "docs" / "specs").is_dir():
+        return [], ["no docs/specs/ directory"]
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    specs, refs = _scan_specs_and_tests(root)
+    if not specs:
+        return [], ["no agreed specs with acceptance criteria"]
+    findings = []
+    for slug in sorted(specs):
+        covering = [rel for rel, slugs, acs in refs if slug in slugs and acs]
+        if not covering:
+            continue  # the coverage check owns the no-test gap; a slug-only
+            #           mention (no AC id) is not a covering test (review NB-3)
+        spec_ep = _last_commit_epoch(root, f"docs/specs/{slug}.md")
+        if spec_ep is None:
+            continue
+        newest = max((_last_commit_epoch(root, rel) or 0) for rel in covering)
+        if newest > spec_ep:
+            findings.append(f"{slug}.md last changed {_day(spec_ep)} but a "
+                            f"covering test changed {_day(newest)} — spec may "
+                            f"be stale")
+    return findings, []
+
+
 _VERIFY_CHECKS = [
     ("spec-links", _check_spec_links),
+    ("spec-coverage", _check_spec_coverage),
+    ("spec-drift", _check_spec_drift),
     ("out-of-band", _check_out_of_band),
     ("contract-stale", _check_contract_stale),
     ("adr-stale", _check_adr_stale),
