@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # Phase sequences per playbook. Forward marks may skip optional phases;
 # skipping "red-confirmed" is special-cased (see cmd_mark).
@@ -500,7 +500,10 @@ def cmd_stats(root):
 # Advisory by default; --strict exits 1 on findings (D26). Every check returns
 # either ("skip", reason) or a list of finding strings, and may never raise out.
 
-_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)\s*:")
+# Tolerates an optional notation tag between the id and the colon
+# (`- AC-1 ` + "`ears`" + `: …`), introduced by SDD Tier-1; bare `- AC-1: …`
+# still matches (backward compatible).
+_AC_DEF_RE = re.compile(r"(?m)^\s*-\s*(AC-\d+)(?:\s+`?[A-Za-z]+`?)?\s*:")
 _AC_REF_RE = re.compile(r"\b(AC-\d+)\b")
 _SPEC_REF_RE = re.compile(r"docs/specs/([\w.\-]+\.md)")
 _STATUS_RE = re.compile(r"(?m)^status:\s*(\w+)")
@@ -715,8 +718,99 @@ def _check_adr_stale(root, cfg, window_days):
     return findings, notes
 
 
+def _scan_specs_and_tests(root):
+    """Shared linkage for the SDD checks (Tier-1). Returns:
+      specs: {slug: set(ac_ids)} for agreed/accepted specs that define criteria
+      refs:  [(relpath, {slugs}, {ac_ids})] for test files referencing a slug
+    A test 'covers' spec S's AC-n when a test file mentions both S's slug and
+    the token AC-n (lightweight ID-reference convention, not an RM database)."""
+    specs = {}
+    specs_dir = Path(root) / "docs" / "specs"
+    if specs_dir.is_dir():
+        for spec in sorted(specs_dir.glob("*.md")):
+            if spec.name == "index.md":
+                continue
+            text = _read_text_safe(spec)
+            m = _STATUS_RE.search(text[:400])
+            if not (m and m.group(1).lower() in ("agreed", "accepted")):
+                continue
+            acs = set(_AC_DEF_RE.findall(text))
+            if acs:
+                specs[spec.stem] = acs
+    refs = []
+    if specs:
+        for p in Path(root).rglob("*"):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(root).as_posix()
+            if rel.startswith((".devflow/", ".git/")) or "/.git/" in rel:
+                continue
+            if "test" not in rel.lower():
+                continue
+            try:
+                t = p.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            slugs = {s for s in specs if s in t}
+            if slugs:
+                refs.append((rel, slugs, set(re.findall(r"AC-\d+", t))))
+    return specs, refs
+
+
+def _check_spec_coverage(root, cfg, window_days):
+    """An agreed spec's AC-n with no referencing test (spec ahead of tests)."""
+    if not (Path(root) / "docs" / "specs").is_dir():
+        return [], ["no docs/specs/ directory"]
+    specs, refs = _scan_specs_and_tests(root)
+    if not specs:
+        return [], ["no agreed specs with acceptance criteria"]
+    covered = set()
+    for _rel, slugs, acs in refs:
+        for s in slugs:
+            for a in acs:
+                covered.add((s, a))
+    if not covered:
+        # No test references any spec AC — the project hasn't adopted the
+        # convention. Stay quiet rather than flag every AC (false-positive trap).
+        return [], ["coverage convention not in use (no test references a spec AC)"]
+    findings = []
+    for slug in sorted(specs):
+        uncov = sorted(a for a in specs[slug] if (slug, a) not in covered)
+        if uncov:
+            findings.append(f"{slug}: no test references {', '.join(uncov)} "
+                            f"(spec-coverage gap)")
+    return findings, []
+
+
+def _check_spec_drift(root, cfg, window_days):
+    """A spec older than its covering tests (tests evolved, spec lagging)."""
+    if not (Path(root) / "docs" / "specs").is_dir():
+        return [], ["no docs/specs/ directory"]
+    if not _is_git_repo(root):
+        return [], ["not a git repository"]
+    specs, refs = _scan_specs_and_tests(root)
+    if not specs:
+        return [], ["no agreed specs with acceptance criteria"]
+    findings = []
+    for slug in sorted(specs):
+        covering = [rel for rel, slugs, _a in refs if slug in slugs]
+        if not covering:
+            continue  # the coverage check owns the no-test gap
+        spec_ep = _last_commit_epoch(root, f"docs/specs/{slug}.md")
+        if spec_ep is None:
+            continue
+        newest = max((_last_commit_epoch(root, rel) or 0) for rel in covering)
+        if newest > spec_ep:
+            findings.append(f"{slug}.md last changed {_day(spec_ep)} but a "
+                            f"covering test changed {_day(newest)} — spec may "
+                            f"be stale")
+    return findings, []
+
+
 _VERIFY_CHECKS = [
     ("spec-links", _check_spec_links),
+    ("spec-coverage", _check_spec_coverage),
+    ("spec-drift", _check_spec_drift),
     ("out-of-band", _check_out_of_band),
     ("contract-stale", _check_contract_stale),
     ("adr-stale", _check_adr_stale),
