@@ -10,6 +10,24 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Nothing yet. Post-release work is operational (pilots, headless smoke transport)
 and tracked outside this repo.
 
+## [2.3.0] — 2026-06-24
+
+SDD Tier-1 — spec-anchored *verification*. Makes acceptance criteria
+machine-checkable and surfaces when a spec and its tests drift apart, without
+ever auto-rewriting either. Every check is advisory (detect-and-prompt).
+
+### Added
+- **Structured acceptance-criteria notation.** An `AC-n` line can carry a `gwt`
+  (Given/When/Then), `ears` (EARS), or `prose` tag to declare its form; a bare
+  `- AC-1:` stays valid. The `devflow-shape` spec template also gains first-class
+  **Non-Goals**, expressed in the EARS `If…then` unwanted-behavior form.
+- **`verify` spec-coverage check** — flags acceptance criteria (`AC-n`) that no
+  test references, gated by a convention-in-use detector so it stays silent until
+  a repo actually links specs to tests.
+- **`verify` spec-drift check** — flags a spec edited more recently than the tests
+  that cover it (word-boundary slug matching; `docs/specs/` excluded from the
+  test scan).
+
 ## [2.2.0] — 2026-06-13
 
 Validation layer — makes the framework's behavior regression-testable and its
@@ -85,7 +103,8 @@ and 11 named pipelines routed through the `using-devflow` skill before any work
 begins. Superseded by the v2 line above; preserved as the migration starting
 point.
 
-[Unreleased]: https://github.com/yuriyvsavchuk/devflow/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/yuriyvsavchuk/devflow/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/yuriyvsavchuk/devflow/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/yuriyvsavchuk/devflow/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/yuriyvsavchuk/devflow/compare/v1.0.0...v2.1.0
 [1.0.0]: https://github.com/yuriyvsavchuk/devflow/releases/tag/v1.0.0
