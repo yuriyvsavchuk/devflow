@@ -19,7 +19,7 @@ criterion is `AC-n` + a notation tag + the statement.
 
 Devflow already produces specs (`devflow-shape`) with prose `AC-n` and a
 `verify` chain (spec-links, out-of-band, contract/ADR staleness). The SDD spike
-(`devflow-team/docs/spikes/2026-06-13-sdd-notation-spike.md`) chose a hybrid
+(`devflow-team/docs/spikes/2026-06-19-sdd-notation-spike.md`) chose a hybrid
 notation. Tier-1 adds the format and two verification checks; Tier-2 (formal
 SRS/ERD/traceability) stays out, in the Team extension.
 
