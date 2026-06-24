@@ -21,16 +21,12 @@ When a new development task begins, invoke the devflow-dispatch skill to classif
 
 ## Upgrade steps
 
-```sh
-# 1. Re-copy skills and agents (overwrites updated files)
-cp -r skills/* ~/.claude/skills/
-cp -r agents/* ~/.claude/agents/
+1. **Re-install the Core** — re-copy skills and agents (this overwrites the updated files) and swap the activation line. The base install is in [docs/ADOPTION.md](docs/ADOPTION.md) (Level 1); the v1→v2 activation-line swap is [above](#the-one-line-change-that-activates-v2).
+2. **Remove the components retired in v2** — the one step unique to upgrading:
 
-# 2. Remove components retired in v2 from your installation
+```sh
 rm -rf ~/.claude/skills/hypothesis-validator ~/.claude/skills/code-simplifier
 rm -f  ~/.claude/agents/research.agent.md ~/.claude/agents/api-researcher.agent.md ~/.claude/agents/scope-estimator.agent.md
-
-# 3. Update the CLAUDE.md activation line (see above)
 ```
 
 ## What replaced what
@@ -67,22 +63,12 @@ rm -f  ~/.claude/agents/research.agent.md ~/.claude/agents/api-researcher.agent.
 
 ## Phase 2 upgrade — the rails (shipped)
 
-Pull the latest framework, then per project — run `init` **from your project's root**, pointing at the framework's copy (running it inside the framework repo would scaffold the framework itself):
-
-```sh
-cd /path/to/your-project
-python /path/to/devflow/devflow.py init   # one command: .devflow/ + hooks (merge-safe, idempotent, .bak before first change)
-python .devflow/devflow.py doctor         # verify: python, Git Bash (Windows), hooks wired, version match
-```
-
-What changes day-to-day:
+Pull the latest framework and add the rails to each project. The install — one `init` from your project's root, the prerequisites, and the fail-open escape hatch — is in [docs/ADOPTION.md](docs/ADOPTION.md) (Level 2). What changes day-to-day once they're on:
 
 - **Every session starts oriented** — the SessionStart hook injects the brief (open run + phase, open hotfix debt, latest decisions); it re-injects after context compaction.
 - **The TDD gate is mechanical** — in `fix`/`build` runs at standard+ tier, production edits are denied until `mark red-confirmed --evidence <test>`; tests and docs are never gated; `build` may record an explicit exception (`mark implemented --no-tdd "<why>"`).
 - **Protected paths** — list human-only files (auth, billing, LICENSE…) in `.devflow/config.json` → the agent is denied unconditionally and instructed to leave a `TODO: [PROTECTED — human authorship required]`.
 - **Runs leave evidence** — `python .devflow/devflow.py stats` shows runs, loop-backs, abandonment, durations.
-
-Prerequisites: Python 3 on PATH; Git Bash on Windows. Escape hatch: `"enabled": false` in `.devflow/config.json` — or delete `.devflow/` — and nothing is ever blocked (the rails are fail-open at every layer). Install at the directory you open Claude Code in — that's the project root the hooks see.
 
 ## Phase 3 upgrade — everyday value (shipped)
 
