@@ -1152,6 +1152,16 @@ class TestVerifySpecCoverage(VerifyBase):
         self.assertEqual(len(hits), 1)
         self.assertIn("AC-2", hits[0])
 
+    def test_specs_dir_file_not_treated_as_test(self):
+        # Confirmation review: a docs/specs/*_spec.md must not self-cover via
+        # the _spec stem — docs/specs/ is never scanned as a test reference.
+        self.write_spec("checkout.md", acs=(1, 2))
+        self.write_test_file("tests/test_checkout.py", "checkout AC-1\n")  # opens gate
+        self.write_test_file("docs/specs/extra_spec.md", "see checkout AC-2\n")
+        hits = self.findings_for("spec-coverage", self.run_verify()[0])
+        self.assertEqual(len(hits), 1)
+        self.assertIn("AC-2", hits[0])
+
 
 class TestVerifySpecDrift(GitFixtureBase):
     """SDD Tier-1: a spec older than its covering tests may be stale."""

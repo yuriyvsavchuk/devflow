@@ -719,9 +719,10 @@ def _check_adr_stale(root, cfg, window_days):
 
 
 def _is_test_path(relpath):
-    """True for conventional test files — a `test`/`tests`/`spec` path segment,
-    a `test_*` / `*_test` filename, or a `.test.`/`.spec.` name. Avoids the
-    substring trap: contest.py, latest/, attestation.md are NOT tests."""
+    """True for conventional test files — a `test`/`tests`/`__tests__` path
+    segment, a `test_*` / `*_test` / `*_spec` stem, or a `.test.`/`.spec.` name.
+    Avoids the substring trap: contest.py, latest/, attestation.md are NOT
+    tests. (Files under docs/specs/ are excluded by the caller regardless.)"""
     # NB: a `specs/` directory (e.g. docs/specs) is NOT tests — only `.spec.`
     # filenames (jest) and `_spec` stems (rspec) count.
     parts = {part.lower() for part in relpath.parts}
@@ -764,7 +765,10 @@ def _scan_specs_and_tests(root):
                 continue
             relp = p.relative_to(root)
             rel = relp.as_posix()
-            if rel.startswith((".devflow/", ".git/")) or "/.git/" in rel:
+            # docs/specs/ is the spec home, never a test source — exclude it so
+            # a spec named *_spec.md cannot self-cover via the _spec stem.
+            if (rel.startswith((".devflow/", ".git/", "docs/specs/"))
+                    or "/.git/" in rel):
                 continue
             if not _is_test_path(relp):
                 continue
