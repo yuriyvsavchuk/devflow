@@ -2,7 +2,7 @@
 name: threat-modeler
 description: Maps the attack surface of a proposed change — inputs, auth paths, trust boundaries, external calls, and sensitive data flows — and produces a structured threat checklist before any security code review begins
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob
 ---
 

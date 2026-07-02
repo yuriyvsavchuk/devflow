@@ -2,7 +2,7 @@
 name: spike-investigator
 description: Hands-on exploration agent that experiments freely to answer a specific technical hypothesis. Produces evidence, not production code.
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Bash, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch
 ---
 

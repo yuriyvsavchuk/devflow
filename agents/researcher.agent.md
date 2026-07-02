@@ -2,7 +2,7 @@
 name: researcher
 description: Technical research agent — investigates any technology, library, framework, or concept (general mode), or an external API/dependency's behavior, constraints, and integration path (API mode). Produces actionable findings, not implementation.
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Bash, Read, Grep, Glob, WebFetch, WebSearch
 ---
 

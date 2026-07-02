@@ -2,7 +2,7 @@
 name: docs-updater
 description: Updates developer-facing documentation, README notes, migration guidance, and changelog entries to match recent code changes without inventing undocumented behavior.
 framework: devflow
-model: claude-haiku-4-5
+model: haiku
 tools: Bash, Read, Edit, Write, Grep, Glob
 ---
 

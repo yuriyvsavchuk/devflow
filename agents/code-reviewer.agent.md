@@ -2,7 +2,7 @@
 name: code-reviewer
 description: Performs a strict, checklist-driven review of recent changes for correctness, edge cases, regressions, maintainability, and project standard compliance.
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Bash, Read, Grep, Glob
 ---
 

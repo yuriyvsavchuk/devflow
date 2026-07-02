@@ -2,7 +2,7 @@
 name: interface-designer
 description: Defines interface contracts (OpenAPI 3.x specs, TypeScript interfaces, or AsyncAPI schemas) before implementation begins — sits between task-planner and feature-implementer when a change introduces or modifies a public API, shared module boundary, or service contract
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob, Edit, Write
 ---
 

@@ -2,7 +2,7 @@
 name: technology-selector
 description: Evaluates technology, library, or framework options for a specific requirement and produces a structured recommendation with trade-offs
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob, WebFetch, WebSearch
 ---
 
