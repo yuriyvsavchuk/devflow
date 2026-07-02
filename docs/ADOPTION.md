@@ -59,6 +59,15 @@ For a small team sharing one repository — coordination as a side effect of art
 4. Let the playbook finish: tests → implementation → reviewer subagent → acceptance → `finish`.
 5. Run `python .devflow/devflow.py stats` — your first ledger entry.
 
+## Subagents and context isolation
+
+Devflow's reviewer, acceptance, researcher, and triager roles run as **subagents** — each in its own isolated context window. The verbose part of their work (reading full diffs, logs, web research) happens in that window and never enters your main conversation; only the structured findings return. This is context isolation, not just delegation: your main session stays at coordination altitude while the noisy exploration is contained.
+
+Two facts worth knowing:
+
+- **The rails hold under delegation.** PreToolUse gates fire for subagent tool calls too (hook payloads carry an `agent_id` when fired inside a subagent), so the TDD gate and protected paths bind an implementer subagent exactly as they bind the main session. Delegating is not an enforcement bypass.
+- **Some skills deliberately stay in the main conversation.** `brainstorming`, `interview`, `session-continuity`, `receiving-code-review`, and `devflow-dispatch` are dialogue-driven or operate on the conversation history — things a subagent's fresh context never receives. Do not move them to an isolated context (`context: fork`); it would sever exactly the input they run on.
+
 ## Artifact front-matter conventions
 
 These formats are the contract `verify` checks against. Deviations are treated as absence (a skip-note, never an error) — but stable formats are what make your artifacts machine-checkable.

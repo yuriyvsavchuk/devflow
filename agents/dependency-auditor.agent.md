@@ -2,7 +2,7 @@
 name: dependency-auditor
 description: Runs ecosystem-native dependency scanners (npm audit, pip-audit, cargo audit, etc.), flags known CVEs, license issues, and outdated pins, and produces a structured audit report for downstream security review
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Bash, Read, Grep, Glob
 ---
 

@@ -171,7 +171,7 @@ Done!
 - Subagents follow TDD naturally
 - Fresh context per task (no confusion)
 - Parallel-safe (subagents don't interfere)
-- Subagent can ask questions (before AND during work)
+- Subagents can still ask questions (returned to the coordinator, answered on re-dispatch or resume — subagents have no direct line to the user)
 
 **vs. Executing Plans:**
 - Same session (no handoff)

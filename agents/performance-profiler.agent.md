@@ -2,7 +2,7 @@
 name: performance-profiler
 description: Establishes performance baselines, identifies hotspots through profiling, and defines measurable acceptance criteria before any optimization work begins
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Bash, Read, Grep, Glob
 ---
 

@@ -2,7 +2,7 @@
 name: code-simplification
 description: Simplifies and refines recently modified code for clarity, consistency, and maintainability while preserving exact functionality.
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Edit, Write, Bash
 ---
 

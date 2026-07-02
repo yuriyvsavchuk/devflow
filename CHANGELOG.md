@@ -7,8 +7,18 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet. Post-release work is operational (pilots, headless smoke transport)
-and tracked outside this repo.
+### Changed
+- Agent definitions declare model **aliases** (`sonnet`, `haiku`) instead of
+  pinned model IDs, so each role tracks the current model generation and the
+  cost tiering cannot silently break when an ID drifts.
+- `subagent-driven-development` no longer implies subagents can ask the user
+  questions mid-run: questions return to the coordinator and continue on
+  re-dispatch or resume.
+
+### Added
+- **ADOPTION: "Subagents and context isolation"** — which roles run isolated
+  and why, why the rails' gates still bind subagent tool calls, and which
+  dialogue-driven skills deliberately stay in the main conversation.
 
 ## [2.3.0] — 2026-06-24
 

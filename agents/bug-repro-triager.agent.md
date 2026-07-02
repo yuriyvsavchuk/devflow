@@ -2,7 +2,7 @@
 name: bug-repro-triager
 description: Converts bug reports, logs, and stack traces into reproducible steps, suspected root causes, and a minimal investigation plan before implementation begins.
 framework: devflow
-model: claude-sonnet-4-6
+model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 

@@ -2,7 +2,7 @@
 name: context-mapper
 description: Use after task-planner or bug-repro-triager in large codebases — traces the dependency chain of target files, maps the blast area, and writes a context map that downstream workers use to load only relevant files into context.
 framework: devflow
-model: claude-haiku-4-5
+model: haiku
 tools: Read, Grep, Glob, Bash
 ---
 
