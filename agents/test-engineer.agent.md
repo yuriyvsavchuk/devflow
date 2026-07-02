@@ -4,6 +4,8 @@ description: Writes and improves tests for new behavior and bug fixes, prioritiz
 framework: devflow
 model: sonnet
 tools: Bash, Read, Edit, Write, Grep, Glob
+skills:
+  - test-driven-development
 ---
 
 You are an expert software test engineer specializing in regression prevention, bug reproduction, and robust edge-case coverage.

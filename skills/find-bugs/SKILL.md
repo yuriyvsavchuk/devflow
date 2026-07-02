@@ -2,25 +2,31 @@
 name: find-bugs
 description: Find bugs, security vulnerabilities, and code quality issues in local branch changes. Use when asked to review changes, find bugs, security review, or audit code on the current branch.
 framework: devflow
+context: fork
+agent: general-purpose
 ---
 
 # Find Bugs
 
 Review changes on this branch for bugs, security vulnerabilities, and code quality issues.
 
-## Phase 0: Context Check (Required Before Any Review Work)
+## Phase 0: Artifact Check (Required Before Any Review Work)
 
-Before reading any code, check whether upstream Pipeline 10 context is present in this session:
+This skill runs in its own isolated context (`context: fork`) — it does not see the parent conversation. Upstream security context arrives as **artifacts on disk**, never as conversation state. Before reading any code:
 
-**If `threat-modeler` output is present in context:**
-- State: `Running with threat-model context — review is targeted to the checklist`
-- Skip Phase 2 (Attack Surface Mapping) — `threat-modeler` already produced it
-- In Phase 3, work through the threat checklist items ranked by priority, not the generic list below — confirm or refute each applicable threat with code-level evidence
-- In Phase 3, also incorporate `dependency-auditor` CVE and package-risk notes if present — flag call sites for affected packages
+1. If the invocation arguments name artifact paths, use those.
+2. Otherwise discover them: the newest `docs/audits/*threat-model*.md` and the newest `docs/audits/*dependency-audit*.md`, if any exist.
 
-**If no `threat-modeler` output is present in context (standalone invocation):**
+**If a threat-model artifact is found:**
+- State: `Running with threat-model artifact <path> — review is targeted to its checklist`
+- If the artifact predates the newest commit on the branch under review, note that the threat model may be stale
+- Skip Phase 2 (Attack Surface Mapping) — the artifact already contains it
+- In Phase 3, work through the artifact's threat checklist ranked by priority, not the generic list below — confirm or refute each applicable threat with code-level evidence
+- In Phase 3, also incorporate the dependency-audit artifact's CVE and package-risk notes if present — flag call sites for affected packages
+
+**If no threat-model artifact is found (standalone invocation):**
 - State: `Running without threat-model context — review uses generic heuristics`
-- Note: `For a full change-specific security audit, run Pipeline 10 (threat-modeler → dependency-auditor → find-bugs) first`
+- Note: `For a full change-specific security audit, run the devflow-audit security adapter (threat-modeler → dependency-auditor → find-bugs) first`
 - Proceed with Phase 2 (Attack Surface Mapping) as the fallback scoping step
 - Proceed with the full generic checklist in Phase 3
 
@@ -106,9 +112,9 @@ Do not make changes — just report findings. The requester decides what to addr
 ## Related Skills and Agents
 
 - **Called by:** devflow:requesting-code-review (as part of pre-merge workflow)
-- **Preceded by:** devflow:threat-modeler in Pipeline 10 (Security audit) — the threat checklist is the investigation context for this skill; without it, the review operates on generic heuristics
-- **Preceded by:** devflow:dependency-auditor in Pipeline 10 — the auditor's CVE and package-risk notes feed directly into which code paths to scrutinize
+- **Preceded by:** devflow:threat-modeler in the devflow-audit security adapter — its threat-model artifact under `docs/audits/` is the investigation context for this skill; without it, the review operates on generic heuristics
+- **Preceded by:** devflow:dependency-auditor — its report artifact's CVE and package-risk notes feed directly into which code paths to scrutinize
 - **Use after:** any implementation to catch security and logic issues before merge
 - Use devflow:code-reviewer for broader code quality review (standards, test adequacy, maintainability)
 - Use devflow:systematic-debugging when a specific failure needs root cause investigation
-- Use Pipeline 10 (threat-modeler → dependency-auditor → find-bugs) for a full proactive security audit rather than this skill standalone
+- Use the devflow-audit security adapter (threat-modeler → dependency-auditor → find-bugs) for a full proactive security audit rather than this skill standalone

@@ -7,18 +7,48 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.4.0] — 2026-07-02
+
+Context-isolation release — aligns the framework with Claude Code's
+skills/subagents model: verbose work runs in isolated contexts, handoffs ride
+durable artifacts instead of conversation state, and the definitions use the
+platform's native mechanisms. Informed by a spec-conformance review of every
+skill and agent definition.
+
+### Added
+- **Artifact-mediated security audit chain.** In the `devflow-audit` security
+  adapter, `threat-modeler` now writes its full threat model to
+  `docs/audits/<date>-threat-model-<slug>.md` and `dependency-auditor` its
+  report to `docs/audits/<date>-dependency-audit-<slug>.md`; each returns only
+  the path and headline items. `find-bugs` runs in its own isolated context
+  (`context: fork`) and reads both artifacts from disk — the full-diff reading
+  no longer floods the main conversation, and the artifacts double as the
+  audit trail for the confirmation pass.
+- **Skill preloading**: `test-engineer` preloads `test-driven-development`
+  (subagents never see skills invoked in the main session; the platform's
+  `skills` field replaces drift-prone duplication).
+- **Native worktree isolation**: `spike-investigator` runs in a temporary
+  auto-cleaned git worktree (`isolation: worktree`) — experiments cannot touch
+  the developer's working tree. `using-git-worktrees` remains the manual,
+  tool-agnostic path and now says so.
+- **ADOPTION: "Subagents and context isolation"** — which roles run isolated
+  and why, why the rails' gates still bind subagent tool calls, and which
+  dialogue-driven skills deliberately stay in the main conversation.
+
 ### Changed
 - Agent definitions declare model **aliases** (`sonnet`, `haiku`) instead of
   pinned model IDs, so each role tracks the current model generation and the
   cost tiering cannot silently break when an ID drifts.
+- `find-bugs` Phase 0 discovers upstream security context from `docs/audits/`
+  artifacts (or invocation arguments) instead of sniffing the conversation —
+  required by the fork, and it makes standalone vs chained mode explicit.
 - `subagent-driven-development` no longer implies subagents can ask the user
   questions mid-run: questions return to the coordinator and continue on
   re-dispatch or resume.
-
-### Added
-- **ADOPTION: "Subagents and context isolation"** — which roles run isolated
-  and why, why the rails' gates still bind subagent tool calls, and which
-  dialogue-driven skills deliberately stay in the main conversation.
+- `threat-modeler` and `dependency-auditor` gain `Write` — read-only with
+  respect to everything except their own `docs/audits/` artifact.
 
 ## [2.3.0] — 2026-06-24
 
@@ -113,7 +143,8 @@ and 11 named pipelines routed through the `using-devflow` skill before any work
 begins. Superseded by the v2 line above; preserved as the migration starting
 point.
 
-[Unreleased]: https://github.com/yuriyvsavchuk/devflow/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/yuriyvsavchuk/devflow/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/yuriyvsavchuk/devflow/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/yuriyvsavchuk/devflow/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/yuriyvsavchuk/devflow/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/yuriyvsavchuk/devflow/compare/v1.0.0...v2.1.0

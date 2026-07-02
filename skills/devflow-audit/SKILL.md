@@ -16,11 +16,13 @@ Evaluation only: this playbook changes no code. Confirmed problems exit to `devf
 
 ## Security adapter
 
-Run in order — each step feeds the next:
+Run in order — each step hands off through a **durable artifact**, not conversation state:
 
-1. **Threat model** (`threat-modeler`): map the change's attack surface — inputs, auth paths, trust boundaries, external calls, sensitive data flows — into an applicability-ranked threat checklist.
-2. **Dependency scan** (`dependency-auditor`): ecosystem-native scanners (npm audit, pip-audit, cargo audit, …). If no scanner is available for the ecosystem, stop and report the gap — never produce findings from memory.
-3. **Security review** (`find-bugs`): code review using the threat checklist and scan results as its investigation context — change-specific, not generic.
+1. **Threat model** (`threat-modeler`): map the change's attack surface — inputs, auth paths, trust boundaries, external calls, sensitive data flows — into an applicability-ranked threat checklist, written to `docs/audits/<date>-threat-model-<slug>.md`. Only the path and top priorities return here.
+2. **Dependency scan** (`dependency-auditor`): ecosystem-native scanners (npm audit, pip-audit, cargo audit, …), focused by the threat model's package handoff; report written to `docs/audits/<date>-dependency-audit-<slug>.md`. If no scanner is available for the ecosystem, stop and report the gap — never produce findings from memory.
+3. **Security review** (`find-bugs`): runs in its own isolated context (`context: fork`) and reads both artifacts from disk — pass their paths as arguments. Change-specific, not generic; the verbose diff-reading stays out of this session, and only the findings report returns.
+
+The artifacts double as the audit trail: the confirmation pass at Exit re-reads them instead of reconstructing the threat model.
 
 Security audit and functional code review are separate passes on the same change — do not conflate them.
 

@@ -10,6 +10,8 @@ A git worktree is a second working directory linked to the same repository, with
 
 This skill creates the isolated workspace. devflow:finishing-a-development-branch is responsible for closing it.
 
+> **Native support on Claude Code:** subagents can get this isolation declaratively — `isolation: worktree` in the agent definition spawns them in a temporary auto-cleaned worktree (`spike-investigator` uses it) — and the platform offers worktree tooling for main sessions. This skill remains the manual, tool-agnostic path and the source of the naming and cleanup conventions below.
+
 ---
 
 ## When to Use

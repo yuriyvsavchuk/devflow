@@ -21,7 +21,7 @@ The `researcher` agent gathers context (docs, known constraints, prior art). Ski
 ### 3. Experiment (throwaway mode)
 
 - No TDD, no production standards — speed of learning is the only quality bar.
-- Code artifacts go on an isolated branch or worktree that can be deleted or archived cleanly.
+- Code artifacts go on an isolated branch or worktree that can be deleted or archived cleanly. On Claude Code, the `spike-investigator` agent gets this automatically — it runs in a temporary git worktree (`isolation: worktree`, auto-cleaned if unchanged); elsewhere, `using-git-worktrees` is the manual path.
 - Stay on the stated hypothesis. New questions discovered along the way become new spikes — not scope growth in this one.
 
 ### 4. Retrospective — mandatory; the spike is not closed without it
